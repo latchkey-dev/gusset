@@ -1,0 +1,9 @@
+PLAN.md
+.env
+.venv/
+__pycache__/
+*.pyc
+graph.db
+harness/
+.pytest_cache/
+dist/
