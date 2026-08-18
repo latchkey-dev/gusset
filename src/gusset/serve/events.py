@@ -65,7 +65,8 @@ class RunLog:
     # -- read side -----------------------------------------------------------
 
     def sessions(self, limit: int = 50) -> list[dict]:
-        """Newest-first run summaries."""
+        """Newest-first run summaries. Limit is clamped to protect the UI."""
+        limit = max(1, min(limit, 200))
         if not self.root.exists():
             return []
         files = sorted(
