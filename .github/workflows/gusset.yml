@@ -24,6 +24,8 @@ jobs:
           python-version: "3.13"
       - name: Install gusset
         run: uv tool install .   # this repo IS gusset — install from source
+      - name: Install pandaprobe CLI (harness evaluations)
+        run: curl -fsSL https://cli.pandaprobe.com/install.sh | sh
       - name: Route event
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

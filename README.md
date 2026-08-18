@@ -64,7 +64,10 @@ For the most autonomous setup, pair the runners with the
 [Latchkey CLI](https://latchkey.dev): `latchkey run` verifies Gusset's
 proposed PRs on fresh isolated runners (agent-drivable — it ships a
 `SKILL.md` for coding agents), and `latchkey watch` hands any CI failure
-that self-heal couldn't fix to a coding agent automatically. The full
+that self-heal couldn't fix to a coding agent automatically. The same
+loop is also available as an **MCP server** (`https://latchkey.dev/mcp`),
+so MCP-capable agents can dispatch workflows, tail runs, run commands on
+fresh runners, and triage unhealed failures conversationally. The full
 optional stack and what each layer removes from a human's plate:
 [docs/howto/autonomous-stack.md](docs/howto/autonomous-stack.md).
 

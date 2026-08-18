@@ -90,6 +90,27 @@ def test_impact_without_diff_is_guarded(setup):
     assert r.outcome == "skipped" and "no diff" in r.detail
 
 
+def test_workflow_crash_is_receipted_not_fatal(setup, monkeypatch):
+    """Provider weather (e.g. a 529 storm) on one invariant must not take
+    down the event, and must NOT enter the ladder ledger (live regression)."""
+    import gusset.supervisor.runner as runner_mod
+
+    def boom(*a, **kw):
+        raise RuntimeError("Overloaded (simulated 529 storm)")
+
+    monkeypatch.setattr(runner_mod, "_run_graph_workflow", boom)
+    receipts = handle_event(
+        Event("cron", setup["repo"]), setup["config"],
+        db_path=setup["db"], ladder=setup["ladder"], out_dir=setup["out"],
+    )
+    by_name = {r.invariant: r for r in receipts}
+    assert by_name["docs-drift"].outcome == "errored"
+    assert "Overloaded" in by_name["docs-drift"].detail
+    assert by_name["deadcode-zero"].outcome == "ran"  # rest of event survived
+    ledger = setup["ladder"].path
+    assert not ledger.exists() or "docs-drift" not in ledger.read_text()
+
+
 def test_impact_runs_and_scores_via_monkeypatched_workflow(setup, monkeypatch):
     """Real guards + real ladder + real delivery; only the LLM workflow faked."""
     import gusset.supervisor.runner as runner_mod

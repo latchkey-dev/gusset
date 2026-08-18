@@ -31,7 +31,7 @@ class Event:
 @dataclass
 class RunReceipt:
     invariant: str
-    outcome: str                 # "ran" | "skipped"
+    outcome: str                 # "ran" | "skipped" | "errored"
     detail: str
     action: ActionReceipt | None = None
     scores: dict | None = None
@@ -82,6 +82,12 @@ def _run_invariant(
         # An unwired workflow is a loud, receipted skip — one broken
         # invariant must not take down the rest of the event.
         return RunReceipt(inv.name, "skipped", str(exc))
+    except Exception as exc:  # noqa: BLE001
+        # Provider weather (529 storms, timeouts) on one invariant must not
+        # fail the whole event: record it, run the rest, let the next
+        # trigger retry. NOT ladder-recorded — an errored run is missing
+        # data, not evidence of bad quality.
+        return RunReceipt(inv.name, "errored", f"{type(exc).__name__}: {exc}")
     if result is None:
         return RunReceipt(inv.name, "skipped", "guard: nothing to do")
     body, scores, commit_paths = result

@@ -381,6 +381,10 @@ def run_event(
     typer.echo(receipts_json(receipts))
     if any(r.outcome == "ran" for r in receipts):
         typer.echo("done", err=True)
+    elif any(r.outcome == "errored" for r in receipts):
+        # Nothing succeeded and something broke — that deserves a red run.
+        # Partial success stays green: the receipts carry the detail.
+        raise typer.Exit(1)
 
 
 ACTION_YML = """\
@@ -417,6 +421,8 @@ jobs:
           python-version: "3.13"
       - name: Install gusset
         run: uv tool install git+https://github.com/latchkey-dev/gusset
+      - name: Install pandaprobe CLI (harness evaluations)
+        run: curl -fsSL https://cli.pandaprobe.com/install.sh | sh
       - name: Route event
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

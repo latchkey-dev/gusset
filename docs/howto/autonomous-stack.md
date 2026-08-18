@@ -73,6 +73,26 @@ latchkey watch                        # poll for unhealed failures,
 coding agent on each new one — so the response to "the custodian's PR broke
 CI" is itself automated, not a notification waiting for a human.
 
+**Or wire it as an MCP server (best for agent-first teams).** Latchkey
+also exposes the same loop as an MCP server, so any MCP-capable agent
+(Claude Code, Cursor, ...) can drive CI directly from a conversation:
+
+```bash
+claude mcp add --transport http latchkey https://latchkey.dev/mcp \
+  --header "Authorization: Bearer $LATCHKEY_TOKEN"
+```
+
+The server (`latchkey-escalation-mcp`) exposes the escalation loop as
+tools: `list_failed_runs` / `get_failure_bundle` (what self-heal couldn't
+fix, with full context for a repair), `dispatch_workflow` /
+`get_run_status` / `tail_run_logs` (drive and observe Actions runs — e.g.
+re-fire the Gusset custodian after a fix), and `run_job` / `get_job_status`
+/ `get_job_logs` (arbitrary commands on fresh isolated runners — the
+MCP-native form of `latchkey run` for verifying a Gusset PR on a clean
+machine). With this, the loop closes conversationally: your agent reads
+Gusset's impact comment, patches the code, verifies on a clean runner, and
+triages any CI failure — without leaving the session.
+
 ## The recommended full setup
 
 | Layer | What stops needing a human |
