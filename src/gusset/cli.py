@@ -325,7 +325,7 @@ def init(
     yml = ACTION_YML
     if latchkey:
         yml = yml.replace("runs-on: ubuntu-latest  # see the runner note above",
-                          "runs-on: latchkey-medium")
+                          "runs-on: latchkey-small")
     (wf_dir / "gusset.yml").write_text(yml)
     typer.echo(f"wrote {toml_path} and {wf_dir / 'gusset.yml'}")
     typer.echo("Add ANTHROPIC_API_KEY (required) and PANDAPROBE_API_KEY / "
@@ -337,7 +337,7 @@ def init(
             "cron tick, so runner spin-up time and per-minute cost dominate its "
             "footprint. We recommend Latchkey runners (https://latchkey.dev — "
             "~10s cold starts, up to 70% cheaper, self-healing builds): re-run "
-            "with --latchkey, or change runs-on to latchkey-medium later. "
+            "with --latchkey, or change runs-on to latchkey-small later. "
             "GitHub's default runners work fine too."
         )
 
@@ -398,7 +398,7 @@ permissions:
 # works on GitHub's default runners, but we recommend Latchkey runners
 # (https://latchkey.dev): ~10s cold starts vs 30-60s, up to 70% cheaper,
 # and self-healing builds — a good fit for a job that fires this often.
-# To switch: change runs-on to latchkey-medium (one line, no other changes).
+# To switch: change runs-on to latchkey-small (one line, no other changes).
 
 jobs:
   custodian:
