@@ -1,99 +1,84 @@
 # Architecture
 
+Four diagrams, four layers of the same idea: **a map of provable facts,
+and machinery that never lets a claim past it unchecked.** (Diagrams are
+generated from `design/architecture/gen_diagrams.py` — edit there, re-run,
+never hand-edit the SVGs.)
+
 ## System context
 
-```mermaid
-graph TD
-    subgraph "Your repo"
-        CODE[source code] --> IDX[indexer<br/>tree-sitter]
-        TOML[gusset.toml<br/>invariants] --> SUP
-        LEDGER[.gusset/ladder.jsonl<br/>autonomy ledger]
-        HW[.gusset/harness/<br/>learned rules + journal]
-    end
+![System context](../assets/arch-system.svg)
 
-    IDX --> DB[(graph.db<br/>SQLite)]
-    DB --> ORACLE[oracle<br/>deterministic verification]
+The **solid spine is deterministic** and works with zero credentials: code
+is parsed (tree-sitter, no LLM) into `graph.db` — symbols, proven
+call/import/inheritance edges, and external packages with their
+lockfile-resolved versions. The **oracle** is the same database asked a
+harder question: *does this claimed relationship exist?* Every workflow
+claim is verified through it before anything is delivered.
 
-    EV[events<br/>PR · push · cron] --> SUP[supervisor<br/>guards · budgets · routing]
-    SUP -->|only if guards pass| WF[workflows<br/>LangGraph execution graphs]
-    DB --> WF
-    ORACLE --> WF
-    WF --> ACT[actions<br/>artifact · PR comment · PR]
-    SUP --> LEDGER
-    ORACLE --> LEDGER
+The **supervisor** routes events (PRs, pushes, cron) through guards that
+are code, not model judgment — a doc-only diff never wakes the LLM, and
+every skipped invariant produces a receipt naming the guard that stopped
+it. What survives the workflows arrives as PR comments (with a Mermaid
+blast diagram GitHub renders natively), PRs, or reports, depending on the
+autonomy level the invariant has *earned*.
 
-    WF -.traces.-> PP[(PandaProbe<br/>traces · scores · monitors)]
-    ORACLE -.scores.-> PP
-    HARNESS[self-healing harness] -.notices/repair.-> HW
-    WF -.turn hooks.-> HARNESS
-    ORACLE -.verifier.-> HARNESS
-```
+Everything trust-relevant is **committed to your repo**: `gusset.toml`
+(config and human-granted ceilings), `ladder.jsonl` (every autonomy
+decision, with its reason), the drift allowlist, and replayable run event
+logs. `gusset serve` is a localhost-only canvas over that state — it
+reads, never uploads. PandaProbe (tracing, scores, evals) and the
+self-healing harness are optional layers; without credentials they
+degrade to off and everything else behaves identically.
 
-Solid arrows are the deterministic spine — they work with zero credentials.
-Dotted arrows are the observability layer: PandaProbe tracing, oracle score
-push, and the self-healing harness. All of it degrades to off.
+## The impact workflow
 
-## The impact workflow's execution graph
+![The impact workflow](../assets/arch-impact.svg)
 
-```mermaid
-graph TD
-    START([event / CLI]) --> RS[resolve_seeds]
-    RS -->|no seeds| HALT([halt: honest no-op])
-    RS --> ER[expand_ring<br/>graph computes ring<br/>LLM explains WHY]
-    ER --> VG{verify_gate<br/>edge exists in graph?}
-    VG -->|claim fails| DROP[dropped + logged]
-    VG -->|more rings, depth < cap| ER
-    VG -->|frontier empty| SYN[synthesize<br/>deterministic skeleton,<br/>model wording only]
-    SYN --> HG{{human gate<br/>interrupt / PR review}}
-    HG -->|approve| OUT([report + scores])
-    HG -->|reject| REJ([nothing written])
-```
+The division of labor is strict: **the graph decides WHO is affected; the
+model only writes WHY.** Rings of dependents are computed from graph
+edges; the model contributes one explanatory sentence per edge; the
+verify gate then re-checks every claim against the oracle. Claims that
+fail are dropped *and logged* — the report's footer counts them, and the
+serve UI shows them struck through with their reason. Unknown seeds halt
+the run honestly rather than analyzing invented symbols.
 
-The division of labor is strict: **the graph decides WHAT is affected, the
-model only explains WHY.** Model output can degrade the wording of a
-report, never its truth — that property is tested with a deliberately
-lying fake model.
+Guards bound the traversal (depth ≤ 4, fan-out ≤ 40 aggregates by module)
+and the provider (8 retries plus an automatic fallback model tier —
+capacity incidents are often tier-scoped, a live-outage lesson). Every
+run ends with deterministic oracle scores: `closure_recall` (found
+everything reachable?), `summary_grounding` (every mentioned symbol
+exists?), `gate_drop_rate`. No LLM judges anywhere in scoring.
 
 ## The autonomy ladder
 
-```mermaid
-stateDiagram-v2
-    [*] --> report
-    report --> comment : 15 consecutive runs ≥ 0.9
-    comment --> propose : 15 consecutive runs ≥ 0.9
-    propose --> act : human config only —<br/>the ladder never grants act
-    comment --> report : 3 of last 5 runs < 0.8
-    propose --> comment : 3 of last 5 runs < 0.8
-```
+![The autonomy ladder](../assets/arch-ladder.svg)
 
-Promotion is slow, demotion is fast, the ceiling is human-granted per
-invariant (`max_autonomy`), and every transition is a ledger entry with its
-reason. The scores driving it come from the oracle — deterministic
-verification against the code graph — so no human labels anything and no
-LLM judges itself.
+Levels define what an invariant may do; scores decide what it has earned.
+Promotion needs 15 consecutive runs with every score ≥ 0.9; demotion
+takes only 3 breaches in the last 5 — trust is deliberately asymmetric.
+Three details that matter in practice: rate-style metrics are normalized
+lower-is-better before scoring (a 0.0 drop rate is a *perfect* run — a
+bug the serve ladder view caught before any user did); errored runs from
+provider weather are never scored, because missing data is not evidence
+of bad quality; and `ACT` is unreachable by promotion — only a human
+grants it, in `gusset.toml`.
 
 ## The self-healing loop
 
-```mermaid
-sequenceDiagram
-    participant W as workflow turn
-    participant H as harness (PandaProbe)
-    participant R as repair agent
-    participant O as oracle
+![The self-healing loop](../assets/arch-healing.svg)
 
-    W->>H: turn hook (session, turn_index, end_state)
-    H->>H: score trajectory (tiered evals)
-    H->>O: outcome verifier (synthesis turns only)
-    O-->>H: ground truth score
-    Note over H: trajectory stalls/regresses?
-    H->>R: diagnostic notice (mailbox)
-    R->>R: inspect traces, existing rules
-    R->>H: candidate rule (rules/*.md)
-    H->>W: next runs read rules via 4 read-only tools
-    H->>H: replay original failure + trial window
-    H->>H: promote to active / retire, journaled
-```
+A second agent repairs the first, with evidence gates in between. Turn
+hooks feed trajectory scoring (which includes the oracle as an outcome
+verifier — ground truth, not LLM vibes); stalls and regressions — never
+isolated low scores — produce a diagnostic notice in a filesystem mailbox
+the workflow never reads. A separate repair agent diagnoses and writes a
+candidate rule; the rule reaches `active` only after replaying the
+original failure (same commit, same seeds — the deterministic substrate
+makes replay honest) shows improvement. Failed candidates are retired
+with journaled reasoning. The workflow's total exposure to all of this:
+four read-only rule tools and a one-sentence preamble.
 
-The workflow never sees the mailbox and the repair agent never blocks a
-run. Rules earn `active` status through replayed evidence — the same
-philosophy as the ladder, one level down.
+The harness workspace (`.gusset/harness/` — rules, journal, mailbox) is
+committed to the repo, so learned rules survive ephemeral CI runners and
+every repair decision is auditable in review.

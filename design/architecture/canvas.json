@@ -1,0 +1,56 @@
+{
+  "artboards": [
+    {
+      "file": "SystemContext.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1140,
+      "h": 700,
+      "title": "System context"
+    },
+    {
+      "file": "ImpactWorkflow.dc.html",
+      "x": 1200,
+      "y": 0,
+      "w": 920,
+      "h": 730,
+      "title": "Impact workflow"
+    },
+    {
+      "file": "AutonomyLadder.dc.html",
+      "x": 0,
+      "y": 780,
+      "w": 980,
+      "h": 470,
+      "title": "Autonomy ladder"
+    },
+    {
+      "file": "SelfHealing.dc.html",
+      "x": 1200,
+      "y": 810,
+      "w": 1000,
+      "h": 600,
+      "title": "Self-healing loop"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 1330,
+      "w": 700,
+      "h": 260,
+      "title": "About"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "note-edit",
+      "x": 2160,
+      "y": 40,
+      "w": 250,
+      "text": "These four ship in docs/explanation/architecture.md.\nSource of truth: design/architecture/gen_diagrams.py.\nMark up here; I apply changes in the generator so docs and canvas stay in sync."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
