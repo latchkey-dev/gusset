@@ -125,6 +125,14 @@ def impact(
     out.write_text(state["draft"] + "\n")
     verified, dropped = len(state.get("verified", [])), len(state.get("dropped", []))
     typer.echo(f"wrote {out} — {verified} verified, {dropped} dropped at the gate")
+
+    from gusset.oracle import score_impact_run
+    from gusset.probe.scoring import push_scores
+
+    scores = score_impact_run(state, db)
+    typer.echo("scores: " + " · ".join(f"{s.name}={s.value}" for s in scores))
+    if push_scores(session_id, scores):
+        typer.echo("scores pushed to PandaProbe")
     if (url := trace_url_hint(session_id)) is not None:
         typer.echo(f"trace: {url}")
 
