@@ -422,7 +422,12 @@ jobs:
       - name: Install gusset
         run: uv tool install git+https://github.com/latchkey-dev/gusset
       - name: Install pandaprobe CLI (harness evaluations)
-        run: curl -fsSL https://cli.pandaprobe.com/install.sh | sh
+        # Pinned by checksum: a compromised installer fails the job instead
+        # of executing. Update the hash deliberately when upgrading the CLI.
+        run: |
+          curl -fsSL -o /tmp/pandaprobe-install.sh https://cli.pandaprobe.com/install.sh
+          echo "3eb708a480c4007ff60b7d5a28d6a0776ef7fd484cf16e99afd110537e3d5583  /tmp/pandaprobe-install.sh" | sha256sum -c -
+          sh /tmp/pandaprobe-install.sh
       - name: Route event
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
