@@ -66,6 +66,70 @@ def stats(db: Path = typer.Option(DEFAULT_DB, help="Graph database path.")) -> N
 
 
 @app.command()
+def impact(
+    symbol: list[str] = typer.Option([], "--symbol", help="Seed symbol qualname(s), e.g. pkg.lib.helper."),
+    diff: str | None = typer.Option(None, "--diff", help="Git range, e.g. HEAD~1; seeds from changed lines."),
+    repo: Path = typer.Option(Path("."), help="Repo root (for --diff)."),
+    db: Path = typer.Option(DEFAULT_DB, help="Graph database path."),
+    out: Path = typer.Option(Path("impact-report.md"), help="Where to write the report."),
+    yes: bool = typer.Option(False, "--yes", help="Waive the human gate (autonomous mode)."),
+    model_name: str = typer.Option("claude-opus-5", "--model", envvar="GUSSET_MODEL"),
+) -> None:
+    """Verified blast radius of a change — every claim checked against the graph."""
+    import uuid
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    from langchain_anthropic import ChatAnthropic
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.types import Command
+
+    from gusset.probe import make_callbacks, trace_url_hint
+    from gusset.workflows.impact import build_impact_graph
+    from gusset.workflows.seeds import seeds_from_diff
+
+    db = _db_path(db)
+    seed_qualnames = list(symbol)
+    if diff:
+        seed_qualnames += seeds_from_diff(repo, diff, db)
+    if not seed_qualnames:
+        typer.echo("No seeds: pass --symbol and/or --diff.", err=True)
+        raise typer.Exit(1)
+
+    session_id = f"impact-{uuid.uuid4().hex[:12]}"
+    callbacks = make_callbacks(session_id, tags=["workflow:impact"])
+    checkpoint_dir = db.parent / "checkpoints.db"
+    with SqliteSaver.from_conn_string(str(checkpoint_dir)) as saver:
+        graph = build_impact_graph(ChatAnthropic(model=model_name), checkpointer=saver)
+        config = {"configurable": {"thread_id": session_id}, "callbacks": callbacks}
+        state = graph.invoke(
+            {"db_path": str(db), "seed_qualnames": seed_qualnames}, config
+        )
+        if state.get("halt_reason"):
+            typer.echo(f"Halted: {state['halt_reason']}", err=True)
+            raise typer.Exit(1)
+
+        if "__interrupt__" in state:
+            draft = state["__interrupt__"][0].value["draft"]
+            if yes:
+                state = graph.invoke(Command(resume=True), config)
+            else:
+                typer.echo(draft)
+                approved = typer.confirm("\nApprove this report?")
+                state = graph.invoke(Command(resume=approved), config)
+                if not approved:
+                    typer.echo("Rejected — nothing written.", err=True)
+                    raise typer.Exit(1)
+
+    out.write_text(state["draft"] + "\n")
+    verified, dropped = len(state.get("verified", [])), len(state.get("dropped", []))
+    typer.echo(f"wrote {out} — {verified} verified, {dropped} dropped at the gate")
+    if (url := trace_url_hint(session_id)) is not None:
+        typer.echo(f"trace: {url}")
+
+
+@app.command()
 def deadcode(db: Path = typer.Option(DEFAULT_DB, help="Graph database path.")) -> None:
     """List symbols with no incoming edges — deletion candidates.
 

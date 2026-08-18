@@ -73,6 +73,32 @@ class GraphStore:
         ).fetchall()
         return [_symbol(r) for r in rows]
 
+    def symbols_overlapping(self, path: str, lines: set[int]) -> list[Symbol]:
+        """Non-module symbols in `path` whose span overlaps any of `lines`.
+
+        Maps a diff hunk to the symbols it touches — the seeds of an impact run.
+        """
+        rows = self.conn.execute(
+            _SYMBOL_SELECT + "WHERE f.path = ? AND s.kind != 'module'", (path,)
+        ).fetchall()
+        return [
+            _symbol(r)
+            for r in rows
+            if any(r["start_line"] <= n <= r["end_line"] for n in lines)
+        ]
+
+    def symbol_by_id(self, symbol_id: int) -> Symbol | None:
+        row = self.conn.execute(
+            _SYMBOL_SELECT + "WHERE s.id = ?", (symbol_id,)
+        ).fetchone()
+        return _symbol(row) if row else None
+
+    def edges_between(self, src_id: int, dst_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT kind, line FROM edges WHERE src = ? AND dst = ?", (src_id, dst_id)
+        ).fetchall()
+        return [{"kind": r["kind"], "line": r["line"]} for r in rows]
+
     def edge_exists(self, src_qualname: str, dst_qualname: str, kind: str | None = None) -> bool:
         """The oracle's core primitive: does this claimed relationship exist?"""
         sql = """
