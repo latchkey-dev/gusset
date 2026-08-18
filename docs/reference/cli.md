@@ -60,6 +60,40 @@ the guard that stopped it. Nothing is ever skipped silently.
 
 Print the version.
 
+# GitHub access model
+
+Gusset never asks for, stores, or manages a GitHub credential of its own.
+Delivery (comments, PRs) goes through the `gh` CLI, which resolves auth
+from its environment:
+
+- **In Actions (autonomous mode):** the generated workflow sets
+  `GH_TOKEN: ${{ github.token }}` — the ephemeral installation token
+  GitHub mints per run, scoped to the one repo and to the permissions the
+  workflow file declares (`contents: write`, `pull-requests: write`).
+  Committing the workflow file *is* the consent step: the permission block
+  is visible in the diff you review when installing Gusset. The token
+  expires when the job ends.
+- **Locally:** `run-event` rides your existing `gh auth login` session.
+  With no session, delivery degrades to an artifact file and the receipt
+  says so — never a silent failure, never a credential prompt.
+
+Two caveats to plan around:
+
+1. **Fork PRs get a read-only token.** GitHub restricts `pull_request`
+   runs triggered from forks, so Gusset cannot comment on external
+   contributors' PRs out of the box — those runs deliver as artifacts.
+   The usual escalations (`pull_request_target`, a GitHub App
+   installation) have real security implications and are deliberately not
+   the default; adopt them only with a considered threat model.
+2. **PRs Gusset opens do not trigger your other workflows.** Events
+   caused by `github.token` never start new workflow runs (GitHub's
+   anti-recursion rule), so CI will not auto-run on a Gusset-proposed PR
+   (atlas refresh, dead-code removal). Re-run checks manually, close and
+   reopen the PR, or — if you want them fully automatic — provide a
+   fine-grained PAT or GitHub App token as the workflow's `GH_TOKEN`
+   instead. Treat that as a real permissions decision: it lets a
+   custodian's PRs set off everything else.
+
 # gusset.toml reference
 
 ```toml

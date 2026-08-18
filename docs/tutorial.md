@@ -109,7 +109,15 @@ layer: [howto/autonomous-stack.md](howto/autonomous-stack.md).
 
 Add `ANTHROPIC_API_KEY` (and the PandaProbe secrets) to the repo's Actions
 secrets, push, and open a PR that changes some code. Gusset comments with
-the verified blast radius. Edit `gusset.toml` to tune which invariants run,
+the verified blast radius.
+
+No GitHub credential is needed: inside Actions, Gusset uses the ephemeral
+per-run token GitHub mints automatically, scoped by the permissions block
+in the workflow file you just committed. Two things to know up front:
+fork-triggered PRs get a read-only token (Gusset delivers artifacts, not
+comments, there), and PRs Gusset opens won't auto-trigger your other CI —
+GitHub's anti-recursion rule. Details and options:
+[reference/cli.md → GitHub access model](reference/cli.md#github-access-model). Edit `gusset.toml` to tune which invariants run,
 their triggers, and their autonomy ceilings — levels above `report` are
 *earned* through the score ledger (see
 [explanation/graph-engineering.md](explanation/graph-engineering.md)),
