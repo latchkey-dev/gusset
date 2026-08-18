@@ -129,7 +129,10 @@ def _summary_grounding(state: dict, store: GraphStore) -> Score:
         return Score("summary_grounding", 1.0, "no symbol paths mentioned in prose")
     known = {
         m for m in mentioned
-        if store.symbol_by_qualname(m) is not None or store.symbols_by_name(m)
+        if store.symbol_by_qualname(m) is not None
+        or store.symbols_by_name(m)
+        # Abbreviated dotted paths (docs style): resolve at dot boundaries.
+        or store.symbols_by_qualname_suffix(m)
     }
     hallucinated = sorted(mentioned - known)
     value = len(known) / len(mentioned)

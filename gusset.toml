@@ -1,0 +1,28 @@
+# Gusset invariants — the truths this repo keeps true.
+# autonomy is the invariant's CURRENT level; Gusset's ladder raises it only
+# on sustained eval scores and lowers it on regression. max_autonomy is the
+# ceiling a human grants; Gusset never raises that itself.
+
+[invariants.impact-on-pr]
+workflow = "impact"
+trigger = "pull_request"
+autonomy = "comment"          # non-destructive, visible value on day one
+max_autonomy = "comment"
+
+[invariants.atlas-freshness]
+workflow = "atlas"
+trigger = "push"
+autonomy = "report"           # earns "propose" through the ladder
+max_autonomy = "propose"
+
+[invariants.deadcode-zero]
+workflow = "deadcode"
+trigger = "cron"
+autonomy = "report"
+max_autonomy = "propose"
+
+[invariants.docs-drift]
+workflow = "docs-drift"
+trigger = "cron"
+autonomy = "report"
+max_autonomy = "propose"
