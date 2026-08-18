@@ -97,11 +97,19 @@ def impact(
         typer.echo("No seeds: pass --symbol and/or --diff.", err=True)
         raise typer.Exit(1)
 
+    from gusset.probe.selfheal import SelfHealing
+
     session_id = f"impact-{uuid.uuid4().hex[:12]}"
+    heal = SelfHealing.create(session_id)
     callbacks = make_callbacks(session_id, tags=["workflow:impact"])
     checkpoint_dir = db.parent / "checkpoints.db"
     with SqliteSaver.from_conn_string(str(checkpoint_dir)) as saver:
-        graph = build_impact_graph(ChatAnthropic(model=model_name), checkpointer=saver)
+        graph = build_impact_graph(
+            ChatAnthropic(model=model_name),
+            checkpointer=saver,
+            system_preamble=heal.system_preamble(),
+            turn_hook=heal.turn_hook,
+        )
         config = {"configurable": {"thread_id": session_id}, "callbacks": callbacks}
         state = graph.invoke(
             {"db_path": str(db), "seed_qualnames": seed_qualnames}, config
@@ -133,6 +141,13 @@ def impact(
     typer.echo("scores: " + " · ".join(f"{s.name}={s.value}" for s in scores))
     if push_scores(session_id, scores):
         typer.echo("scores pushed to PandaProbe")
+    import asyncio
+
+    if (settlement := asyncio.run(heal.settle())) is not None:
+        typer.echo(
+            f"harness: gate_breached={settlement['gate_breached']}"
+            + (f" repair={settlement['repair_status']}" if settlement["repair_status"] else "")
+        )
     if (url := trace_url_hint(session_id)) is not None:
         typer.echo(f"trace: {url}")
 

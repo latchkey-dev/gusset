@@ -112,9 +112,22 @@ def build_impact_graph(
     checkpointer: SqliteSaver | None = None,
     max_depth: int = MAX_DEPTH,
     fanout_cap: int = FANOUT_CAP,
+    system_preamble: str = "",
+    turn_hook=None,
 ):
     """Compile the impact execution graph. The GraphStore is opened per node
-    from state's db_path so the compiled graph stays picklable/checkpointable."""
+    from state's db_path so the compiled graph stays picklable/checkpointable.
+
+    system_preamble is prepended to every LLM system message (the harness
+    injects its learned-rules capability sentence there). turn_hook, if
+    given, is called as turn_hook(node_name, full_state_view) at each turn
+    boundary — the seam the self-healing harness observes through, kept as
+    a plain callable so workflows never import probe/."""
+    system = SystemMessage(system_preamble + SYSTEM.content) if system_preamble else SYSTEM
+
+    def _fire(node: str, state: ImpactState, update: ImpactState) -> None:
+        if turn_hook is not None:
+            turn_hook(node, {**state, **update})
 
     def resolve_seeds(state: ImpactState) -> ImpactState:
         store = GraphStore(state["db_path"])
@@ -176,7 +189,7 @@ def build_impact_graph(
                 listing = "\n".join(
                     f'- {c["qualname"]} ({c["edge_kind"]} -> {c["via"]})' for c in ring
                 )
-                response = model.invoke([SYSTEM, HumanMessage(
+                response = model.invoke([system, HumanMessage(
                     f"Changed dependency ring (depth {state['rings_done'] + 1}):\n{listing}"
                 )])
                 whys = _parse_explanations(_content_text(response))
@@ -204,11 +217,16 @@ def build_impact_graph(
                     passed.append(c)
                 else:
                     dropped.append({**c, "reason": "edge not found in graph"})
-            return {
+            update: ImpactState = {
                 "verified": passed,
                 "dropped": dropped,
                 "frontier": [c["qualname"] for c in passed],
             }
+            _fire("verify_gate", state, {
+                "verified": state.get("verified", []) + passed,
+                "dropped": state.get("dropped", []) + dropped,
+            })
+            return update
         finally:
             store.close()
 
@@ -220,14 +238,17 @@ def build_impact_graph(
     def synthesize(state: ImpactState) -> ImpactState:
         verified = state.get("verified", [])
         if not verified:
-            return {"draft": _render(state, summary="No dependents found — the "
-                    "change is contained to the seed symbols themselves.")}
+            update = {"draft": _render(state, summary="No dependents found — the "
+                      "change is contained to the seed symbols themselves.")}
+            _fire("synthesize", state, update)
+            return update
         listing = "\n".join(
             f'- {c["qualname"]} (depth {c["depth"]}): {c["why"]}' for c in verified
         )
         response = model.invoke([
             SystemMessage(
-                "Summarize this verified impact analysis in 2-4 sentences for a "
+                system_preamble
+                + "Summarize this verified impact analysis in 2-4 sentences for a "
                 "pull-request comment. Every symbol listed is confirmed affected; "
                 "do not add symbols, do not hedge about ones not listed."
             ),
@@ -235,7 +256,9 @@ def build_impact_graph(
                 f"Seeds: {', '.join(state['seeds'])}\nVerified impacts:\n{listing}"
             ),
         ])
-        return {"draft": _render(state, summary=_content_text(response))}
+        update = {"draft": _render(state, summary=_content_text(response))}
+        _fire("synthesize", state, update)
+        return update
 
     def human_gate(state: ImpactState) -> ImpactState:
         # Interrupt: the caller approves, edits, or rejects the draft.
