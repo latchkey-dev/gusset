@@ -1,0 +1,43 @@
+name: Gusset
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 0"   # weekly, Sunday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  custodian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install gusset
+        run: uv tool install .   # this repo IS gusset — install from source
+      - name: Route event
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PANDAPROBE_API_KEY: ${{ secrets.PANDAPROBE_API_KEY }}
+          PANDAPROBE_PROJECT_NAME: ${{ secrets.PANDAPROBE_PROJECT_NAME }}
+          HARNESS_REPAIR_MODEL: ${{ secrets.HARNESS_REPAIR_MODEL }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gusset run-event pull_request \
+              --pr "${{ github.event.pull_request.number }}" \
+              --diff "origin/${{ github.base_ref }}...HEAD"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            gusset run-event push --diff "${{ github.event.before }}..HEAD"
+          else
+            gusset run-event cron
+          fi
