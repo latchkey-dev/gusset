@@ -4,6 +4,18 @@ Gusset develops Gusset. Every friction point, surprise, or win from using
 the tool on itself lands here — this file is the product backlog the tool
 earns by being used. Newest first.
 
+## 2026-08-18 (the PR-image 404 — Daniel's find)
+
+- **BUG→FIXED — comment image 404'd on the real PR.** Two-layer design
+  error: raw.githubusercontent images can never render in private-repo
+  comments (GitHub's Camo proxy fetches anonymously), and the image lived
+  on the PR branch, which squash-merge deletes. Root process lesson: I
+  verified the comment MARKDOWN and a local render, never the rendered
+  pixel on github.com itself — the last inch is where it broke. Fix is
+  structural: blast diagrams are now Mermaid (native GitHub rendering,
+  no hosting, no branch coupling), which also deleted the entire
+  commit-SVG-and-push machinery. Existing PR #3 comment patched in place.
+
 ## 2026-08-18 (serve review round — Daniel's feedback)
 
 - **BUG→FIXED — installed-tool staleness bit again.** The e2e video first
