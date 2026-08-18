@@ -6,7 +6,7 @@ upgrades: observability, self-healing, and autonomous mode.
 ## 1. Install
 
 ```bash
-git clone https://github.com/thedefaultman/gusset && cd gusset
+git clone https://github.com/latchkey-dev/gusset && cd gusset
 uv sync                      # Python 3.13+; uv installs it if missing
 uv run gusset version
 ```

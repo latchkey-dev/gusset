@@ -416,7 +416,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install gusset
-        run: uv tool install git+https://github.com/thedefaultman/gusset
+        run: uv tool install git+https://github.com/latchkey-dev/gusset
       - name: Route event
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

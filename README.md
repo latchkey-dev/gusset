@@ -35,7 +35,7 @@ a human.
 ## Quickstart
 
 ```bash
-git clone https://github.com/thedefaultman/gusset && cd gusset
+git clone https://github.com/latchkey-dev/gusset && cd gusset
 uv sync
 export ANTHROPIC_API_KEY=sk-ant-...
 
