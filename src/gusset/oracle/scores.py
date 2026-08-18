@@ -1,11 +1,18 @@
-"""Oracle scores for a finished impact run.
+"""Oracle scores for finished impact and atlas runs.
 
+Impact (score_impact_run):
 closure_recall     — did the workflow find everything the graph says is
                      reachable? (coverage vs. the reverse closure)
 gate_drop_rate     — how much of what reached the gate failed it?
 summary_grounding  — of the dotted symbol paths the model wrote in prose,
                      how many actually exist in the graph? (catches the
                      failure LLM judges miss: confident invented symbols)
+
+Atlas (score_atlas_run):
+module_coverage    — fraction of the graph's module clusters that got a
+                     verified summary section
+gate_drop_rate     — dropped prose claims / (kept mentions + dropped)
+summary_grounding  — reused: backticked paths in the draft must exist
 """
 
 from __future__ import annotations
@@ -36,6 +43,51 @@ def score_impact_run(state: dict, db_path: str | Path, max_depth: int = 4) -> li
         ]
     finally:
         store.close()
+
+
+def score_atlas_run(state: dict, db_path: str | Path) -> list[Score]:
+    store = GraphStore(db_path)
+    try:
+        return [
+            _module_coverage(state, store),
+            _atlas_gate_drop_rate(state),
+            _summary_grounding(state, store),
+        ]
+    finally:
+        store.close()
+
+
+def _module_coverage(state: dict, store: GraphStore) -> Score:
+    """Fraction of the graph's module clusters with a verified atlas section.
+
+    Clusters come from store.module_clusters() — the same deterministic
+    partition the workflow's T1 uses, so coverage is measured against the
+    graph, never against whatever the run happened to enumerate.
+    """
+    clusters = set(store.module_clusters())
+    if not clusters:
+        return Score("module_coverage", 1.0, "empty graph — no modules to cover")
+    covered = {v["module"] for v in state.get("verified", [])} & clusters
+    missing = sorted(clusters - covered)
+    return Score(
+        "module_coverage", round(len(covered) / len(clusters), 4),
+        f"{len(covered)}/{len(clusters)} graph modules have a verified section"
+        + (f"; missing: {', '.join(missing[:5])}" if missing else ""),
+    )
+
+
+def _atlas_gate_drop_rate(state: dict) -> Score:
+    """Like _gate_drop_rate, but counted in the atlas gate's own unit —
+    prose claims (symbol mentions and edge claims), since atlas `verified`
+    entries are whole module summaries, not individual claims."""
+    kept = sum(len(v.get("mentions", [])) for v in state.get("verified", []))
+    dropped = len(state.get("dropped", []))
+    total = kept + dropped
+    rate = dropped / total if total else 0.0
+    return Score(
+        "gate_drop_rate", round(rate, 4),
+        f"{dropped}/{total} prose claims dropped at the verification gate",
+    )
 
 
 def _closure_recall(state: dict, store: GraphStore, max_depth: int) -> Score:

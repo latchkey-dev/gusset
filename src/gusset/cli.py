@@ -151,6 +151,159 @@ def impact(
 
 
 @app.command()
+def atlas(
+    db: Path = typer.Option(DEFAULT_DB, help="Graph database path."),
+    out: Path = typer.Option(Path("atlas.md"), help="Where to write the atlas."),
+    yes: bool = typer.Option(False, "--yes", help="Waive the human gate."),
+    model_name: str = typer.Option("claude-opus-5", "--model", envvar="GUSSET_MODEL"),
+) -> None:
+    """Architecture atlas: verified module map + Mermaid diagram from the graph."""
+    import asyncio
+    import uuid
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    from langchain_anthropic import ChatAnthropic
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.types import Command
+
+    from gusset.oracle import score_atlas_run
+    from gusset.probe import make_callbacks, trace_url_hint
+    from gusset.probe.scoring import push_scores
+    from gusset.probe.selfheal import SelfHealing
+    from gusset.workflows.atlas import build_atlas_graph
+
+    db = _db_path(db)
+    session_id = f"atlas-{uuid.uuid4().hex[:12]}"
+    heal = SelfHealing.create(session_id)
+
+    async def _run() -> dict:
+        heal.bind_loop(asyncio.get_running_loop())
+        with SqliteSaver.from_conn_string(str(db.parent / "checkpoints.db")) as saver:
+            graph = build_atlas_graph(
+                ChatAnthropic(model=model_name), checkpointer=saver,
+                system_preamble=heal.system_preamble(), turn_hook=heal.turn_hook,
+            )
+            config = {
+                "configurable": {"thread_id": session_id},
+                "callbacks": make_callbacks(session_id, tags=["workflow:atlas"]),
+            }
+            state = await asyncio.to_thread(graph.invoke, {"db_path": str(db)}, config)
+            if state.get("halt_reason"):
+                return state
+            if "__interrupt__" in state:
+                if yes:
+                    approved = True
+                else:
+                    typer.echo(state["__interrupt__"][0].value["draft"])
+                    approved = await asyncio.to_thread(typer.confirm, "\nApprove?")
+                state = await asyncio.to_thread(graph.invoke, Command(resume=approved), config)
+                state["approved"] = approved
+            if state.get("approved") is not False and state.get("draft"):
+                out.write_text(state["draft"] + "\n")
+                scores = score_atlas_run(state, db)
+                typer.echo(f"wrote {out}")
+                typer.echo("scores: " + " · ".join(f"{s.name}={s.value}" for s in scores))
+                if await asyncio.to_thread(push_scores, session_id, scores):
+                    typer.echo("scores pushed to PandaProbe")
+            await heal.settle()
+            return state
+
+    state = asyncio.run(_run())
+    if state.get("halt_reason"):
+        typer.echo(f"Halted: {state['halt_reason']}", err=True)
+        raise typer.Exit(1)
+    if state.get("approved") is False:
+        typer.echo("Rejected — nothing written.", err=True)
+        raise typer.Exit(1)
+    if (url := trace_url_hint(session_id)) is not None:
+        typer.echo(f"trace: {url}")
+
+
+@app.command("docs-drift")
+def docs_drift(
+    docs_glob: str = typer.Option("**/*.md", "--docs", help="Glob for doc files."),
+    repo: Path = typer.Option(Path("."), help="Repo root."),
+    db: Path = typer.Option(DEFAULT_DB, help="Graph database path."),
+    out: Path = typer.Option(Path("docs-drift.md"), help="Where to write the report."),
+    yes: bool = typer.Option(False, "--yes", help="Waive the human gate."),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Deterministic only; skip the explanation paragraph."),
+) -> None:
+    """Check doc references against the graph; report stale symbol paths."""
+    import asyncio
+    import uuid
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.types import Command
+
+    from gusset.probe import make_callbacks, trace_url_hint
+    from gusset.workflows.docsdrift import build_docsdrift_graph
+
+    db = _db_path(db)
+    from gusset.graph.indexer import SKIP_DIRS
+
+    skip = SKIP_DIRS | {".gusset"}
+    docs = {
+        str(p.relative_to(repo)): p.read_text()
+        for p in sorted(repo.glob(docs_glob))
+        if p.is_file() and not (skip & set(p.relative_to(repo).parts))
+    }
+    if not docs:
+        typer.echo("No docs matched.", err=True)
+        raise typer.Exit(1)
+
+    model = None
+    if not no_llm:
+        import os
+
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            from langchain_anthropic import ChatAnthropic
+
+            model = ChatAnthropic(model=os.environ.get("GUSSET_MODEL", "claude-opus-5"))
+
+    session_id = f"docsdrift-{uuid.uuid4().hex[:12]}"
+
+    async def _run() -> dict:
+        with SqliteSaver.from_conn_string(str(db.parent / "checkpoints.db")) as saver:
+            graph = build_docsdrift_graph(model, checkpointer=saver)
+            config = {
+                "configurable": {"thread_id": session_id},
+                "callbacks": make_callbacks(session_id, tags=["workflow:docs-drift"]),
+            }
+            state = await asyncio.to_thread(
+                graph.invoke, {"db_path": str(db), "docs": docs}, config
+            )
+            if "__interrupt__" in state:
+                if yes:
+                    approved = True
+                else:
+                    typer.echo(state["__interrupt__"][0].value["draft"])
+                    approved = await asyncio.to_thread(typer.confirm, "\nApprove?")
+                state = await asyncio.to_thread(graph.invoke, Command(resume=approved), config)
+                state["approved"] = approved
+            return state
+
+    state = asyncio.run(_run())
+    if state.get("approved") is False:
+        typer.echo("Rejected — nothing written.", err=True)
+        raise typer.Exit(1)
+    out.write_text(state["draft"] + "\n")
+    stale = state.get("stale", [])
+    typer.echo(
+        f"wrote {out} — {len(state.get('claims', []))} claims checked, "
+        f"{len(stale)} stale"
+    )
+    if (url := trace_url_hint(session_id)) is not None:
+        typer.echo(f"trace: {url}")
+    if stale:
+        raise typer.Exit(2)  # drift found: nonzero for CI checks
+
+
+@app.command()
 def init(
     repo: Path = typer.Argument(Path("."), help="Repo to install Gusset into."),
 ) -> None:

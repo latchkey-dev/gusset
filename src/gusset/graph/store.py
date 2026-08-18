@@ -42,6 +42,19 @@ FROM symbols s JOIN files f ON f.id = s.file_id
 """
 
 
+def cluster_key(path: str) -> str:
+    """Deterministic module-cluster key for a repo-relative POSIX path.
+
+    Files under a directory cluster by their top-level directory (the
+    package); root-level files cluster by their stem: ``pkg/lib.py`` -> "pkg",
+    ``app.py`` -> "app". Paths in this store are always POSIX (schema.py), so
+    splitting on "/" is exact, not a heuristic.
+    """
+    if "/" in path:
+        return path.split("/", 1)[0]
+    return path.rsplit(".", 1)[0] if "." in path else path
+
+
 class GraphStore:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
@@ -86,6 +99,23 @@ class GraphStore:
             for r in rows
             if any(r["start_line"] <= n <= r["end_line"] for n in lines)
         ]
+
+    def symbols_by_qualname_suffix(self, suffix: str) -> list[Symbol]:
+        """Symbols whose qualname equals `suffix` or ends with ".<suffix>".
+
+        Deterministic resolution for doc-style dotted references, where docs
+        routinely abbreviate leading packages (`lib.helper` resolves to
+        pkg.lib.helper). GLOB rather than LIKE so `_` stays a literal and
+        matching stays case-sensitive; callers pass dotted identifier paths
+        (word characters and dots), which contain no GLOB metacharacters.
+        """
+        rows = self.conn.execute(
+            _SYMBOL_SELECT
+            + "WHERE s.qualname = ? OR s.qualname GLOB ('*.' || ?) "
+            "ORDER BY s.qualname",
+            (suffix, suffix),
+        ).fetchall()
+        return [_symbol(r) for r in rows]
 
     def symbol_by_id(self, symbol_id: int) -> Symbol | None:
         row = self.conn.execute(
@@ -172,6 +202,68 @@ class GraphStore:
             """
         ).fetchall()
         return [_symbol(r) for r in rows]
+
+    # -- module-level aggregation -------------------------------------------
+
+    def module_clusters(self) -> dict[str, list[Symbol]]:
+        """All symbols grouped into module clusters by cluster_key(file path).
+
+        The deterministic partition shared by the atlas workflow (T1) and the
+        oracle's module_coverage score — one truth source, no LLM. Clusters
+        are sorted by name; each symbol list is ordered by path, start line,
+        then id. A single-file repo yields exactly one cluster.
+        """
+        rows = self.conn.execute(
+            _SYMBOL_SELECT + "ORDER BY f.path, s.start_line, s.id"
+        ).fetchall()
+        clusters: dict[str, list[Symbol]] = {}
+        for r in rows:
+            clusters.setdefault(cluster_key(r["path"]), []).append(_symbol(r))
+        return dict(sorted(clusters.items()))
+
+    def edge_listing(self) -> list[dict]:
+        """Every edge with both endpoints' qualnames and file paths.
+
+        The substrate for module-level views: cluster_edges() and the atlas
+        per-module prompts are built from exactly this list. Deterministic
+        ORDER BY, plain SQL, no LLM.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT e.kind, e.line,
+                   a.qualname AS src_qualname, fa.path AS src_path,
+                   b.qualname AS dst_qualname, fb.path AS dst_path
+            FROM edges e
+            JOIN symbols a ON a.id = e.src JOIN files fa ON fa.id = a.file_id
+            JOIN symbols b ON b.id = e.dst JOIN files fb ON fb.id = b.file_id
+            ORDER BY fa.path, e.line, a.qualname, b.qualname, e.kind
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def cluster_edges(self) -> list[dict]:
+        """Inter-cluster edges: {src, dst, kinds, count} per cluster pair.
+
+        Aggregates edge_listing() by cluster_key of each endpoint's file,
+        excluding intra-cluster edges. The atlas Mermaid diagram is drawn
+        from exactly this list, so diagram edges are a subset of graph edges
+        by construction. Sorted by (src, dst); kinds sorted within each pair.
+        """
+        agg: dict[tuple[str, str], dict] = {}
+        for e in self.edge_listing():
+            src = cluster_key(e["src_path"])
+            dst = cluster_key(e["dst_path"])
+            if src == dst:
+                continue
+            entry = agg.setdefault(
+                (src, dst), {"src": src, "dst": dst, "kinds": set(), "count": 0}
+            )
+            entry["kinds"].add(e["kind"])
+            entry["count"] += 1
+        return [
+            {**agg[pair], "kinds": sorted(agg[pair]["kinds"])}
+            for pair in sorted(agg)
+        ]
 
     # -- stats --------------------------------------------------------------
 

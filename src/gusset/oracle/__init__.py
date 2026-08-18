@@ -5,6 +5,6 @@ PandaProbe evals, the autonomy ladder, and the harness verifier all
 build on — an LLM-authored score here would be circular.
 """
 
-from gusset.oracle.scores import Score, score_impact_run
+from gusset.oracle.scores import Score, score_atlas_run, score_impact_run
 
-__all__ = ["Score", "score_impact_run"]
+__all__ = ["Score", "score_atlas_run", "score_impact_run"]

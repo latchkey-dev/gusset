@@ -51,9 +51,9 @@ def test_cron_runs_deadcode_and_skips_nothing_silently(setup):
         db_path=setup["db"], ladder=setup["ladder"], out_dir=setup["out"],
     )
     by_name = {r.invariant: r for r in receipts}
-    # docs-drift is cron-subscribed but not wired yet: a loud, receipted skip.
+    # docs-drift runs deterministically; the fixture has no .md files, so
+    # it skips with a receipt (never silently).
     assert by_name["docs-drift"].outcome == "skipped"
-    assert "docs-drift" in by_name["docs-drift"].detail
     dead = by_name["deadcode-zero"]
     assert dead.outcome == "ran"
     assert dead.action.action == "artifact"  # report level -> artifact only

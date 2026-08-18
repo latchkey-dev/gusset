@@ -89,6 +89,50 @@ def test_search(store: GraphStore):
     assert "pkg.lib.helper" in hits
 
 
+def test_symbols_by_qualname_suffix(store: GraphStore):
+    assert {s.qualname for s in store.symbols_by_qualname_suffix("lib.helper")} == {
+        "pkg.lib.helper"
+    }
+    # Exact qualname resolves too.
+    assert {s.qualname for s in store.symbols_by_qualname_suffix("pkg.lib.helper")} == {
+        "pkg.lib.helper"
+    }
+    # Underscore is literal, not a wildcard (LIKE would treat it as one).
+    assert store.symbols_by_qualname_suffix("lib._internal")
+    assert not store.symbols_by_qualname_suffix("lib.internal")
+    # Case-sensitive (LIKE is ASCII case-insensitive).
+    assert not store.symbols_by_qualname_suffix("LIB.HELPER")
+    # Suffix matches only at a dot boundary.
+    assert not store.symbols_by_qualname_suffix("b.helper")
+    assert not store.symbols_by_qualname_suffix("nope.helper")
+
+
+def test_module_clusters_partition(store: GraphStore):
+    clusters = store.module_clusters()
+    assert set(clusters) == {"app", "pkg"}
+    assert "app.main" in {s.qualname for s in clusters["app"]}
+    pkg_quals = {s.qualname for s in clusters["pkg"]}
+    assert {"pkg.lib.helper", "pkg.lib._internal", "pkg.models.Child"} <= pkg_quals
+
+
+def test_edge_listing_matches_edge_exists(store: GraphStore):
+    listing = store.edge_listing()
+    assert listing, "fixture graph has edges"
+    for e in listing:
+        assert store.edge_exists(e["src_qualname"], e["dst_qualname"], e["kind"])
+    triples = {(e["src_qualname"], e["dst_qualname"], e["kind"]) for e in listing}
+    assert ("pkg.lib.helper", "pkg.lib._internal", "calls") in triples
+
+
+def test_cluster_edges_are_inter_module_only(store: GraphStore):
+    edges = {(e["src"], e["dst"]): e for e in store.cluster_edges()}
+    assert ("app", "pkg") in edges
+    kinds = edges[("app", "pkg")]["kinds"]
+    assert "calls" in kinds and "imports" in kinds
+    assert ("pkg", "app") not in edges  # no fabricated/reverse cluster edges
+    assert all(src != dst for src, dst in edges)
+
+
 def test_stats(store: GraphStore):
     stats = store.stats()
     assert stats["files"] == 4

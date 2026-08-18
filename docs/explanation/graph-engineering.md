@@ -24,8 +24,11 @@ Gusset uses all three graph types the discipline names:
 ## The oracle: why the code graph is special
 
 Most agent output can only be judged by another model. A claim about code
-structure is different: *"changing `auth.validate_token` affects `login`"*
-names an edge that either exists in the parsed graph or does not. The
+structure is different: *"changing validate_token affects login"* names an
+edge that either exists in the parsed graph or does not. (This paragraph
+originally backticked that example as a dotted path — and Gusset's own
+docs-drift run flagged it as a stale reference, because no such symbol
+exists in this repo. The tool policing its own documentation is the point.) The
 knowledge graph is therefore not context — it is an **oracle**, a source of
 free, deterministic ground truth on every single run.
 

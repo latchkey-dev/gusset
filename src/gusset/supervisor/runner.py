@@ -133,7 +133,91 @@ def _execute_workflow(
         scores = {s.name: s.value for s in score_impact_run(state, db_path)}
         return state["draft"], scores, []
 
+    if inv.workflow == "atlas":
+        state = _run_graph_workflow(
+            "atlas", {"db_path": str(db_path)}, session_id, with_model=True
+        )
+        if state.get("halt_reason"):
+            return None
+        from gusset.oracle import score_atlas_run
+
+        scores = {s.name: s.value for s in score_atlas_run(state, db_path)}
+        atlas_out = event.repo_root / "docs" / "architecture.md"
+        atlas_out.parent.mkdir(parents=True, exist_ok=True)
+        atlas_out.write_text(state["draft"] + "\n")
+        return state["draft"], scores, [atlas_out]
+
+    if inv.workflow == "docs-drift":
+        from gusset.graph.indexer import SKIP_DIRS
+
+        skip = SKIP_DIRS | {".gusset"}
+        docs = {
+            str(p.relative_to(event.repo_root)): p.read_text()
+            for p in sorted(event.repo_root.rglob("*.md"))
+            if not (skip & set(p.relative_to(event.repo_root).parts))
+        }
+        if not docs:
+            return None
+        state = _run_graph_workflow(
+            "docs-drift", {"db_path": str(db_path), "docs": docs}, session_id,
+            with_model=bool(__import__("os").environ.get("ANTHROPIC_API_KEY")),
+        )
+        if not state.get("stale"):
+            return None  # nothing drifted — receipted as a guard skip upstream
+        scores = {
+            "drift_found": 1.0,
+            "claims_checked": float(len(state.get("claims", []))),
+        }
+        return state["draft"], scores, []
+
     raise ValueError(f"workflow {inv.workflow!r} not yet wired into the supervisor")
+
+
+def _run_graph_workflow(
+    name: str, inputs: dict, session_id: str, *, with_model: bool
+) -> dict:
+    """Shared runner for atlas/docs-drift: same loop discipline as impact."""
+    import asyncio
+    import os
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.types import Command
+
+    from gusset.probe import make_callbacks
+    from gusset.probe.selfheal import SelfHealing
+
+    if name == "atlas":
+        from gusset.workflows.atlas import build_atlas_graph as build
+    else:
+        from gusset.workflows.docsdrift import build_docsdrift_graph as build
+
+    model = None
+    if with_model:
+        from langchain_anthropic import ChatAnthropic
+
+        model = ChatAnthropic(model=os.environ.get("GUSSET_MODEL", "claude-opus-5"))
+
+    async def _run() -> dict:
+        heal = SelfHealing.create(session_id)
+        heal.bind_loop(asyncio.get_running_loop())
+        with SqliteSaver.from_conn_string(":memory:") as saver:
+            graph = build(
+                model, checkpointer=saver,
+                system_preamble=heal.system_preamble(), turn_hook=heal.turn_hook,
+            )
+            config = {
+                "configurable": {"thread_id": session_id},
+                "callbacks": make_callbacks(
+                    session_id, tags=[f"workflow:{name}", "supervisor"]
+                ),
+            }
+            state = await asyncio.to_thread(graph.invoke, inputs, config)
+            if "__interrupt__" in state:
+                state = await asyncio.to_thread(graph.invoke, Command(resume=True), config)
+            await heal.settle()
+            return state
+
+    return asyncio.run(_run())
 
 
 def _run_impact(event: Event, db_path: Path, seeds: list[str], session_id: str) -> dict:
