@@ -97,38 +97,64 @@ def impact(
         typer.echo("No seeds: pass --symbol and/or --diff.", err=True)
         raise typer.Exit(1)
 
+    import asyncio
+
     from gusset.probe.selfheal import SelfHealing
 
     session_id = f"impact-{uuid.uuid4().hex[:12]}"
     heal = SelfHealing.create(session_id)
     callbacks = make_callbacks(session_id, tags=["workflow:impact"])
     checkpoint_dir = db.parent / "checkpoints.db"
-    with SqliteSaver.from_conn_string(str(checkpoint_dir)) as saver:
-        graph = build_impact_graph(
-            ChatAnthropic(model=model_name),
-            checkpointer=saver,
-            system_preamble=heal.system_preamble(),
-            turn_hook=heal.turn_hook,
-        )
-        config = {"configurable": {"thread_id": session_id}, "callbacks": callbacks}
-        state = graph.invoke(
-            {"db_path": str(db), "seed_qualnames": seed_qualnames}, config
-        )
-        if state.get("halt_reason"):
-            typer.echo(f"Halted: {state['halt_reason']}", err=True)
-            raise typer.Exit(1)
 
-        if "__interrupt__" in state:
-            draft = state["__interrupt__"][0].value["draft"]
-            if yes:
-                state = graph.invoke(Command(resume=True), config)
-            else:
-                typer.echo(draft)
-                approved = typer.confirm("\nApprove this report?")
-                state = graph.invoke(Command(resume=approved), config)
-                if not approved:
-                    typer.echo("Rejected — nothing written.", err=True)
-                    raise typer.Exit(1)
+    async def _run() -> dict:
+        # One event loop for the whole run: harness eval tasks live on it,
+        # while the (synchronous, LLM-blocking) graph runs in a worker
+        # thread and marshals turn hooks back via call_soon_threadsafe.
+        heal.bind_loop(asyncio.get_running_loop())
+        with SqliteSaver.from_conn_string(str(checkpoint_dir)) as saver:
+            graph = build_impact_graph(
+                ChatAnthropic(model=model_name),
+                checkpointer=saver,
+                system_preamble=heal.system_preamble(),
+                turn_hook=heal.turn_hook,
+            )
+            config = {"configurable": {"thread_id": session_id}, "callbacks": callbacks}
+            state = await asyncio.to_thread(
+                graph.invoke, {"db_path": str(db), "seed_qualnames": seed_qualnames}, config
+            )
+            if state.get("halt_reason"):
+                return state
+
+            if "__interrupt__" in state:
+                if yes:
+                    approved = True
+                else:
+                    typer.echo(state["__interrupt__"][0].value["draft"])
+                    approved = await asyncio.to_thread(
+                        typer.confirm, "\nApprove this report?"
+                    )
+                state = await asyncio.to_thread(
+                    graph.invoke, Command(resume=approved), config
+                )
+                state["approved"] = approved
+        return state
+
+    state = asyncio.run(_finish(_run(), heal, db, out, session_id))
+    if state.get("halt_reason"):
+        typer.echo(f"Halted: {state['halt_reason']}", err=True)
+        raise typer.Exit(1)
+    if state.get("approved") is False:
+        typer.echo("Rejected — nothing written.", err=True)
+        raise typer.Exit(1)
+    if (url := trace_url_hint(session_id)) is not None:
+        typer.echo(f"trace: {url}")
+
+
+async def _finish(run_coro, heal, db: Path, out: Path, session_id: str) -> dict:
+    """Awaits the run, then scoring + settlement on the same loop."""
+    state = await run_coro
+    if state.get("halt_reason") or state.get("approved") is False:
+        return state
 
     out.write_text(state["draft"] + "\n")
     verified, dropped = len(state.get("verified", [])), len(state.get("dropped", []))
@@ -139,17 +165,16 @@ def impact(
 
     scores = score_impact_run(state, db)
     typer.echo("scores: " + " · ".join(f"{s.name}={s.value}" for s in scores))
-    if push_scores(session_id, scores):
-        typer.echo("scores pushed to PandaProbe")
     import asyncio
 
-    if (settlement := asyncio.run(heal.settle())) is not None:
+    if await asyncio.to_thread(push_scores, session_id, scores):
+        typer.echo("scores pushed to PandaProbe")
+    if (settlement := await heal.settle()) is not None:
         typer.echo(
             f"harness: gate_breached={settlement['gate_breached']}"
             + (f" repair={settlement['repair_status']}" if settlement["repair_status"] else "")
         )
-    if (url := trace_url_hint(session_id)) is not None:
-        typer.echo(f"trace: {url}")
+    return state
 
 
 @app.command()

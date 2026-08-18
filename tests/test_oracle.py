@@ -66,6 +66,14 @@ def test_gate_drops_are_measured(db):
     assert s["gate_drop_rate"].value == pytest.approx(1 / 3, abs=1e-4)
 
 
+def test_partial_state_mid_run_scores_without_error(db):
+    """The harness verifier calls the oracle on mid-run turns — no draft yet."""
+    state = full_state()
+    state["draft"] = None
+    s = by_name(score_impact_run(state, db))
+    assert s["summary_grounding"].value == 1.0
+
+
 def test_push_scores_noop_without_credentials(monkeypatch, db):
     from gusset.probe.scoring import push_scores
 

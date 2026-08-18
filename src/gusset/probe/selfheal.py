@@ -24,12 +24,20 @@ from gusset.probe.tracing import make_callbacks, probe_enabled
 
 
 def _oracle_verifier(session_id: str, end_state: Any) -> float | None:
-    """Ground truth for the harness: recompute oracle scores from end_state."""
+    """Ground truth for the harness: recompute oracle scores from end_state.
+
+    Outcome verification only applies to outcomes: mid-run turns are
+    incomplete by construction (ring N of M), and scoring them as final
+    would teach the repair agent phantom lessons — None means "no ground
+    truth for this turn", and the trajectory gate handles shape instead.
+    """
     if not isinstance(end_state, dict):
         return None
     payload = end_state.get("gusset") or {}
     db_path, state = payload.get("db_path"), payload.get("state")
     if not db_path or not isinstance(state, dict) or not Path(db_path).exists():
+        return None
+    if payload.get("node") != "synthesize" or not state.get("draft"):
         return None
     from gusset.oracle import score_impact_run
 
@@ -44,6 +52,13 @@ class SelfHealing:
         self._harness = harness
         self.session_id = session_id
         self._turn_index = 0
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Bind the event loop harness tasks must run on. The workflow itself
+        runs in a worker thread (asyncio.to_thread), so turn hooks marshal
+        their on_turn_end onto this loop — ensure_future needs it running."""
+        self._loop = loop
 
     @property
     def enabled(self) -> bool:
@@ -82,7 +97,19 @@ class SelfHealing:
         if not self.enabled:
             return
         self._turn_index += 1
-        self._harness.on_turn_end({
+        payload = self._turn_payload(node, state)
+        if self._loop is not None:
+            try:
+                running = asyncio.get_running_loop()
+            except RuntimeError:
+                running = None
+            if running is not self._loop:
+                self._loop.call_soon_threadsafe(self._harness.on_turn_end, payload)
+                return
+        self._harness.on_turn_end(payload)
+
+    def _turn_payload(self, node: str, state: dict) -> dict:
+        return {
             "session_id": self.session_id,
             "turn_index": self._turn_index,
             "end_state": {
@@ -95,7 +122,7 @@ class SelfHealing:
                     },
                 },
             },
-        })
+        }
 
     async def settle(self) -> dict | None:
         """Await evaluation (and any repair episode) for this session.

@@ -71,7 +71,7 @@ def _gate_drop_rate(state: dict) -> Score:
 
 def _summary_grounding(state: dict, store: GraphStore) -> Score:
     """Every backticked dotted path in the draft must exist in the graph."""
-    draft = state.get("draft", "")
+    draft = state.get("draft") or ""  # mid-run turns have no draft yet
     mentioned = set(_DOTTED.findall(draft))
     if not mentioned:
         return Score("summary_grounding", 1.0, "no symbol paths mentioned in prose")

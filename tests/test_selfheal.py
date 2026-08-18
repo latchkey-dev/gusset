@@ -73,8 +73,20 @@ def test_preamble_reaches_system_messages(db, tmp_path):
     assert seen and all(c.startswith("RULES EXIST.") for c in seen)
 
 
+def test_verifier_ignores_midrun_turns(db):
+    """Mid-run rings are incomplete by design; scoring them as outcomes
+    taught the repair agent phantom lessons (live-run regression)."""
+    end_state = {"gusset": {"node": "verify_gate", "db_path": str(db), "state": {
+        "seeds": ["pkg.lib._internal"],
+        "verified": [{"qualname": "pkg.lib.helper", "depth": 1,
+                      "via": "pkg.lib._internal", "edge_kind": "calls", "why": "w"}],
+        "dropped": [], "draft": None,
+    }}}
+    assert _oracle_verifier("s", end_state) is None
+
+
 def test_verifier_recomputes_oracle_truth(db):
-    end_state = {"gusset": {"db_path": str(db), "state": {
+    end_state = {"gusset": {"node": "synthesize", "db_path": str(db), "state": {
         "seeds": ["pkg.lib._internal"],
         "verified": [
             {"qualname": "pkg.lib.helper", "depth": 1, "via": "pkg.lib._internal",

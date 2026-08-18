@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.parse
 import urllib.request
 
@@ -42,7 +43,13 @@ def push_scores(session_id: str, scores: list) -> bool:
     import pandaprobe
 
     pandaprobe.flush()  # the trace must be ingested before we can score it
-    trace_id = _find_trace_id(session_id)
+    # Ingestion is async server-side; flush() returning does not mean the
+    # trace is queryable yet. Bounded retry instead of racing it.
+    trace_id = None
+    for delay in (0, 2, 4, 8):
+        time.sleep(delay)
+        if (trace_id := _find_trace_id(session_id)) is not None:
+            break
     if trace_id is None:
         return False
     for s in scores:
