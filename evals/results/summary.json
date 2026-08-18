@@ -1,0 +1,68 @@
+{
+  "model": "claude-sonnet-5",
+  "n_rows": 48,
+  "conditions": {
+    "A": {
+      "name": "A \u2014 freeform agent (no graph)",
+      "n_ok": 16,
+      "n_error": 0,
+      "mean_precision": 0.4466,
+      "median_precision": 0.4104,
+      "mean_recall": 0.686,
+      "median_recall": 0.8334,
+      "mean_hallucinated_rate": 0.1138,
+      "median_hallucinated_rate": 0.0162,
+      "mean_tokens": 90982.375,
+      "median_tokens": 54649.0,
+      "mean_wall_seconds": 36.9794,
+      "median_wall_seconds": 36.58,
+      "total_claims": 310,
+      "total_hallucinated": 31
+    },
+    "B": {
+      "name": "B \u2014 gusset impact workflow",
+      "n_ok": 16,
+      "n_error": 0,
+      "mean_precision": 1.0,
+      "median_precision": 1.0,
+      "mean_recall": 1.0,
+      "median_recall": 1.0,
+      "mean_hallucinated_rate": 0.0,
+      "median_hallucinated_rate": 0.0,
+      "mean_tokens": 4086.5625,
+      "median_tokens": 2746.5,
+      "mean_wall_seconds": 17.2188,
+      "median_wall_seconds": 13.7,
+      "total_claims": 276,
+      "total_hallucinated": 0
+    },
+    "C": {
+      "name": "C \u2014 gusset, verify gate neutered (derived)",
+      "n_ok": 16,
+      "n_error": 0,
+      "mean_precision": 1.0,
+      "median_precision": 1.0,
+      "mean_recall": 1.0,
+      "median_recall": 1.0,
+      "mean_hallucinated_rate": 0.0,
+      "median_hallucinated_rate": 0.0,
+      "mean_tokens": 0,
+      "median_tokens": 0.0,
+      "mean_wall_seconds": 0.0,
+      "median_wall_seconds": 0.0,
+      "total_claims": 276,
+      "total_hallucinated": 0
+    }
+  },
+  "spend_usd": {
+    "standard": 2.1077,
+    "intro_thru_2026-08-31": 1.4052
+  },
+  "usage_totals": {
+    "input_tokens": 1452682,
+    "output_tokens": 68421,
+    "cache_read": 1213562,
+    "cache_creation": 0,
+    "llm_calls": 229
+  }
+}
