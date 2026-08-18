@@ -77,8 +77,11 @@ SYSTEM = SystemMessage(
 
 
 def _content_text(response) -> str:
-    """Text of a chat response. Claude with adaptive thinking returns content
-    as a list of blocks (thinking + text) — take only the text blocks."""
+    """Text of a chat response, tolerant of block-list content.
+
+    Claude with adaptive thinking returns a list of blocks (thinking +
+    text); only text blocks contribute. Unknown block types are ignored
+    rather than stringified, so provider changes degrade to empty text."""
     content = response.content
     if isinstance(content, str):
         return content
