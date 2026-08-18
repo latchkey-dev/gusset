@@ -32,7 +32,7 @@ from langgraph.types import interrupt
 from gusset.graph import GraphStore
 
 MAX_DEPTH = 4
-FANOUT_CAP = 50
+FANOUT_CAP = 40  # tightened after fan-out review
 
 
 def _append(left: list, right: list) -> list:
