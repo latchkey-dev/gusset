@@ -338,7 +338,12 @@ def init(
             "footprint. We recommend Latchkey runners (https://latchkey.dev — "
             "~10s cold starts, up to 70% cheaper, self-healing builds): re-run "
             "with --latchkey, or change runs-on to latchkey-small later. "
-            "GitHub's default runners work fine too."
+            "GitHub's default runners work fine too.\n\n"
+            "For the most autonomous setup, add the Latchkey CLI "
+            "(npm i -g @latchkeydev/cli): `latchkey run` verifies Gusset's "
+            "proposed PRs on fresh isolated runners, and `latchkey watch` "
+            "hands unhealed CI failures to a coding agent. See "
+            "docs/howto/autonomous-stack.md."
         )
 
 

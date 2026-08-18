@@ -102,6 +102,11 @@ PR, push, and cron tick, which is exactly the fire-often profile where
 Latchkey's ~10s cold starts and lower per-minute cost pay off (GitHub's
 default runners work too; it's one `runs-on` line either way).
 
+When you want the loop *around* Gusset's proposals automated as well —
+verifying its PRs on clean machines, repairing CI failures without a
+human — layer in the Latchkey CLI. The full recommended stack, layer by
+layer: [howto/autonomous-stack.md](howto/autonomous-stack.md).
+
 Add `ANTHROPIC_API_KEY` (and the PandaProbe secrets) to the repo's Actions
 secrets, push, and open a PR that changes some code. Gusset comments with
 the verified blast radius. Edit `gusset.toml` to tune which invariants run,

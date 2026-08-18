@@ -60,6 +60,14 @@ GitHub's default runners, but we recommend
 (vs 30–60s), up to 70% cheaper, and self-healing builds. Switching is one
 line: `runs-on: latchkey-small`.
 
+For the most autonomous setup, pair the runners with the
+[Latchkey CLI](https://latchkey.dev): `latchkey run` verifies Gusset's
+proposed PRs on fresh isolated runners (agent-drivable — it ships a
+`SKILL.md` for coding agents), and `latchkey watch` hands any CI failure
+that self-heal couldn't fix to a coding agent automatically. The full
+optional stack and what each layer removes from a human's plate:
+[docs/howto/autonomous-stack.md](docs/howto/autonomous-stack.md).
+
 Full walkthrough: [docs/tutorial.md](docs/tutorial.md).
 
 ## Why trust an agent's output?
