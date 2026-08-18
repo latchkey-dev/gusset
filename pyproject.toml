@@ -1,0 +1,23 @@
+[project]
+name = "gusset"
+version = "0.1.0"
+description = "An autonomous repo custodian, engineered as graphs. Verified blast-radius on every PR, self-updating architecture docs, autonomy earned via eval scores."
+authors = [{ name = "Daniel Zoghalchali" }]
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "rich>=15.0.0",
+    "typer>=0.27.1",
+]
+
+[project.scripts]
+gusset = "gusset.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
