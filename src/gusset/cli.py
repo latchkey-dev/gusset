@@ -103,9 +103,13 @@ def impact(
     import asyncio
 
     from gusset.probe.selfheal import SelfHealing
+    from gusset.serve.events import RunLog
 
     session_id = f"impact-{uuid.uuid4().hex[:12]}"
     heal = SelfHealing.create(session_id)
+    runlog = RunLog(db.parent / "runs")
+    runlog.start(session_id, "impact", {"seeds": seed_qualnames})
+    logged_hook = runlog.turn_hook(session_id, heal.turn_hook)
     callbacks = make_callbacks(session_id, tags=["workflow:impact"])
     checkpoint_dir = db.parent / "checkpoints.db"
 
@@ -119,7 +123,7 @@ def impact(
                 make_model(model_name),
                 checkpointer=saver,
                 system_preamble=heal.system_preamble(),
-                turn_hook=heal.turn_hook,
+                turn_hook=logged_hook,
             )
             config = {"configurable": {"thread_id": session_id}, "callbacks": callbacks}
             state = await asyncio.to_thread(
@@ -144,11 +148,18 @@ def impact(
 
     state = asyncio.run(_finish(_run(), heal, db, out, session_id))
     if state.get("halt_reason"):
+        runlog.finish(session_id, None, "halted")
         typer.echo(f"Halted: {state['halt_reason']}", err=True)
         raise typer.Exit(1)
     if state.get("approved") is False:
+        runlog.finish(session_id, None, "rejected")
         typer.echo("Rejected — nothing written.", err=True)
         raise typer.Exit(1)
+    from gusset.oracle import score_impact_run as _sir
+
+    runlog.finish(
+        session_id, {s.name: s.value for s in _sir(state, db)}, "approved"
+    )
     if (url := trace_url_hint(session_id)) is not None:
         typer.echo(f"trace: {url}")
 
@@ -310,6 +321,39 @@ def docs_drift(
         typer.echo(f"trace: {url}")
     if stale:
         raise typer.Exit(2)  # drift found: nonzero for CI checks
+
+
+@app.command()
+def serve(
+    repo: Path = typer.Option(Path("."), help="Repo root."),
+    db: Path = typer.Option(DEFAULT_DB, help="Graph database path."),
+    port: int = typer.Option(8321, help="Port on 127.0.0.1."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Don't open a browser."),
+) -> None:
+    """The local canvas: graph, impact replay, live runs, drift, ladder, setup.
+
+    Local-only: binds 127.0.0.1, never uploads anything. First run (no
+    graph db yet) lands on the setup screen.
+    """
+    import webbrowser
+
+    from gusset.serve.server import serve as make_server
+
+    if not db.exists():
+        typer.echo(f"No graph at {db} — the setup screen will index the repo.")
+        db.parent.mkdir(parents=True, exist_ok=True)
+        from gusset.graph.indexer import index_repo
+
+        index_repo(repo, db)
+    httpd = make_server(repo.resolve(), db.resolve(), port=port)
+    url = f"http://127.0.0.1:{port}"
+    typer.echo(f"gusset serve → {url}  (Ctrl-C to stop)")
+    if not no_browser:
+        webbrowser.open(url)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        typer.echo("\nstopped")
 
 
 @app.command()

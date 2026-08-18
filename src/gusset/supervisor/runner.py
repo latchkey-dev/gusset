@@ -137,7 +137,8 @@ def _execute_workflow(
         from gusset.oracle import score_impact_run
 
         scores = {s.name: s.value for s in score_impact_run(state, db_path)}
-        return state["draft"], scores, []
+        body = _with_blast_image(state, event, session_id) or state["draft"]
+        return body, scores, []
 
     if inv.workflow == "atlas":
         state = _run_graph_workflow(
@@ -177,6 +178,54 @@ def _execute_workflow(
         return state["draft"], scores, []
 
     raise ValueError(f"workflow {inv.workflow!r} not yet wired into the supervisor")
+
+
+def _with_blast_image(state: dict, event: Event, session_id: str) -> str | None:
+    """Prepend the blast-radius SVG to the impact comment.
+
+    GitHub renders images in comments only from fetchable URLs, so the SVG
+    is committed to the PR's own branch and referenced raw. Every failure
+    mode degrades to the text-only comment — never a broken image.
+    """
+    import subprocess
+
+    try:
+        from gusset.serve.blastimage import blast_svg
+
+        svg = blast_svg(
+            state.get("seeds") or [],
+            state.get("verified") or [],
+            state.get("dropped") or [],
+        )
+        rel = f".gusset/out/blast-{session_id}.svg"
+        out_path = event.repo_root / rel
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(svg)
+        if event.pr_number is None:
+            return None  # local run: file written, no comment to decorate
+        branch = subprocess.run(
+            ["git", "-C", str(event.repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=15,
+        ).stdout.strip()
+        subprocess.run(["git", "-C", str(event.repo_root), "add", rel],
+                       check=True, capture_output=True, timeout=15)
+        subprocess.run(
+            ["git", "-C", str(event.repo_root), "commit", "-m",
+             f"gusset: blast-radius image for {session_id}"],
+            check=True, capture_output=True, timeout=15,
+        )
+        subprocess.run(["git", "-C", str(event.repo_root), "push", "origin", branch],
+                       check=True, capture_output=True, timeout=60)
+        slug = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+            capture_output=True, text=True, timeout=15, cwd=event.repo_root,
+        ).stdout.strip()
+        if not slug or not branch:
+            return None
+        url = f"https://raw.githubusercontent.com/{slug}/{branch}/{rel}"
+        return f"![blast radius]({url})\n\n{state['draft']}"
+    except Exception:  # noqa: BLE001 — the image is garnish, never a failure
+        return None
 
 
 def _run_graph_workflow(
