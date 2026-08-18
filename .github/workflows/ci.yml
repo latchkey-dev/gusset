@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: latchkey-small
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
