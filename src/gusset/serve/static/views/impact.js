@@ -1,9 +1,23 @@
 // #/impact — blast-radius replay of an impact run (ViewImpact mockup).
 
-import { el, svg, getJSON, codeBox, emptyState, fmtScore } from "../util.js";
+import { el, svg, getJSON, codeBox, emptyState, explainer, fmtScore } from "../util.js";
 
 const VB_W = 860, VB_H = 690;
 const CX = VB_W / 2, CY = 330;
+const CROWDED_RING = 10; // above this many nodes a ring goes hover-only
+
+// text measurement for label pills (viewBox units == CSS px here)
+const measure = (() => {
+  const c = document.createElement("canvas").getContext("2d");
+  return (text, size, weight = 400) => {
+    c.font = `${weight} ${size}px "Spline Sans Mono", monospace`;
+    return c.measureText(text).width;
+  };
+})();
+
+const boxesOverlap = (a, b, m = 2) =>
+  a.x < b.x + b.w + m && b.x < a.x + a.w + m
+  && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
 
 export async function mountImpact(container, params, ctx) {
   const seed = params.get("seed");
@@ -80,6 +94,7 @@ export async function mountImpact(container, params, ctx) {
   });
 
   // depth rings + labels (outermost dashed, inner solid — mockup)
+  const ringObstacles = []; // DEPTH n texts — node labels must not cover them
   for (let d = 1; d <= rings; d++) {
     const r = ringR(d);
     const outer = d === rings && rings > 1;
@@ -90,20 +105,90 @@ export async function mountImpact(container, params, ctx) {
       ...(outer ? { "stroke-dasharray": "6 7" } : {}),
     }));
     const lx = CX - r * 0.707, ly = CY - r * 0.707;
-    svgEl.append(svg("text", {
-      x: lx - 2, y: ly - 6, "font-family": "Spline Sans Mono, monospace",
-      "font-size": 10, fill: "var(--faint)",
-    }, `DEPTH ${d}`));
+    ringObstacles.push({
+      d, x: lx - 2, y: ly - 16, w: measure(`DEPTH ${d}`, 10) + 4, h: 13,
+      tx: lx - 2, ty: ly - 6,
+    });
   }
 
   const edgesG = svg("g");
   const nodesG = svg("g");
+  const ringLabelsG = svg("g"); // above nodes so a node never buries "DEPTH n"
   const labelsG = svg("g");
-  svgEl.append(edgesG, nodesG, labelsG);
+  const hoverG = svg("g", { "pointer-events": "none" });
+  svgEl.append(edgesG, nodesG, ringLabelsG, labelsG, hoverG);
+  for (const o of ringObstacles) {
+    ringLabelsG.append(svg("text", {
+      x: o.tx, y: o.ty, "font-family": "Spline Sans Mono, monospace",
+      "font-size": 10, fill: "var(--faint)",
+      stroke: "var(--panel)", "stroke-width": 5, "paint-order": "stroke",
+    }, `DEPTH ${o.d}`));
+  }
+
+  // -- label pills -----------------------------------------------------------
+  // Placement: radially outside the node relative to center (left half
+  // anchors right edge, right half anchors left edge), then a greedy
+  // vertical nudge away from center until no two boxes overlap. The seed
+  // label is placed first and painted last, so it is never overdrawn.
+
+  function labelSpec(text, p, r, { size = 10, color = "var(--ink)", weight = 400 } = {}) {
+    const dx = p.x - CX, dy = p.y - CY;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const ux = dx / d, uy = dy / d;
+    const gap = r + 8;
+    const bx = p.x + ux * gap, by = p.y + uy * gap;
+    const w = measure(text, size, weight) + 10;
+    const h = size + 7;
+    let box;
+    if (Math.abs(ux) < 0.25) {
+      // nearly vertical: center the pill above/below the node
+      box = { x: p.x - w / 2, y: uy < 0 ? by - h : by, w, h };
+    } else if (ux < 0) {
+      box = { x: bx - w, y: by - h / 2, w, h }; // left half → right-aligned
+    } else {
+      box = { x: bx, y: by - h / 2, w, h };     // right half → left-aligned
+    }
+    box.x = Math.max(3, Math.min(VB_W - 3 - w, box.x)); // stay in frame
+    return { text, box, size, color, weight, dir: p.y < CY ? -1 : 1 };
+  }
+
+  function nudge(spec, placed) {
+    for (let i = 0; i < 60; i++) {
+      const hit = placed.find((b) => boxesOverlap(spec.box, b));
+      if (!hit) break;
+      spec.box.y = spec.dir < 0
+        ? hit.y - spec.box.h - 3
+        : hit.y + hit.h + 3;
+    }
+    placed.push(spec.box);
+  }
+
+  function paintLabel(spec) {
+    const { box, text, size, color, weight } = spec;
+    return svg("g", { class: "lbl" },
+      svg("rect", {
+        x: box.x, y: box.y, width: box.w, height: box.h, rx: 3,
+        fill: "var(--panel)", stroke: "var(--line)", "stroke-width": 1,
+      }),
+      svg("text", {
+        x: box.x + box.w / 2, y: box.y + box.h / 2 + size * 0.36,
+        "text-anchor": "middle", "font-family": "Spline Sans Mono, monospace",
+        "font-size": size, "font-weight": weight, fill: color,
+      }, text));
+  }
+
+  function hoverLabel(c) {
+    hoverG.textContent = "";
+    const p = pos.get(c.qualname);
+    if (!p) return;
+    const spec = labelSpec(shortName(c.qualname), p, 12, { size: 10 });
+    hoverG.append(paintLabel(spec));
+  }
 
   // -- reveal machinery (replay scrubber) ------------------------------------
   function render(revealV, revealD) {
     edgesG.textContent = ""; nodesG.textContent = ""; labelsG.textContent = "";
+    hoverG.textContent = "";
     const shownV = verified.slice(0, revealV);
     const shownD = dropped.slice(0, revealD);
     const shownSet = new Set([...seeds, ...shownV.map((c) => c.qualname)]);
@@ -124,42 +209,62 @@ export async function mountImpact(container, params, ctx) {
         stroke: "var(--drop)", "stroke-width": 1.8, "stroke-dasharray": "5 4",
       }));
     }
-    // seeds
+
+    // label layout: seed boxes claim their space first
+    const placed = [...ringObstacles];
+    const seedSpecs = seeds.map((q) => {
+      const p = pos.get(q);
+      const text = shortName(q);
+      const w = measure(text, 11.5, 500) + 12;
+      const h = 19;
+      const spec = {
+        text, size: 11.5, weight: 500, color: "var(--rust)", dir: 1,
+        box: { x: p.x - w / 2, y: p.y + 22, w, h },
+      };
+      nudge(spec, placed);
+      return spec;
+    });
+
+    const ringCount = new Map();
+    for (const c of shownV) ringCount.set(c.depth, (ringCount.get(c.depth) || 0) + 1);
+
+    // seeds (nodes now, labels last so nothing overdraws them)
     seeds.forEach((q) => {
       const p = pos.get(q);
       nodesG.append(svg("circle", { cx: p.x, cy: p.y, r: 15, fill: "var(--rust)" }));
-      labelsG.append(svg("text", {
-        x: p.x, y: p.y + 34, "text-anchor": "middle",
-        "font-family": "Spline Sans Mono, monospace", "font-size": 11.5,
-        "font-weight": 500, fill: "var(--rust)",
-      }, shortName(q)));
     });
     for (const c of shownV) {
       const p = pos.get(c.qualname);
       const r = c.depth === 1 ? 11 : 9;
-      nodesG.append(svg("circle", {
+      const node = svg("circle", {
         cx: p.x, cy: p.y, r, fill: "var(--panel)",
         stroke: "var(--pass)", "stroke-width": c.depth === 1 ? 2.2 : 1.9,
-      }));
-      const below = p.y >= CY;
-      labelsG.append(svg("text", {
-        x: p.x, y: below ? p.y + r + 13 : p.y - r - 9, "text-anchor": "middle",
-        "font-family": "Spline Sans Mono, monospace", "font-size": 9.5, fill: "var(--ink)",
-      }, shortName(c.qualname)));
+      });
+      nodesG.append(node);
+      if ((ringCount.get(c.depth) || 0) > CROWDED_RING) {
+        // crowded ring: label on hover only
+        node.addEventListener("mouseenter", () => hoverLabel(c));
+        node.addEventListener("mouseleave", () => { hoverG.textContent = ""; });
+      } else {
+        const spec = labelSpec(shortName(c.qualname), p, r, { size: 10 });
+        nudge(spec, placed);
+        labelsG.append(paintLabel(spec));
+      }
     }
     for (const c of shownD) {
       const p = pos.get(c.qualname);
-      const g = svg("g", { opacity: 0.75 });
+      const g = svg("g", { opacity: 0.85 });
       g.append(
         svg("circle", { cx: p.x, cy: p.y, r: 9, fill: "var(--drop-tint)", stroke: "var(--drop)", "stroke-width": 1.9 }),
         svg("path", { d: `M${p.x - 5} ${p.y - 5} l10 10 M${p.x + 5} ${p.y - 5} l-10 10`, stroke: "var(--drop)", "stroke-width": 1.7 }),
       );
       nodesG.append(g);
-      labelsG.append(svg("text", {
-        x: p.x, y: p.y + 24, "text-anchor": "middle",
-        "font-family": "Spline Sans Mono, monospace", "font-size": 9, fill: "var(--drop)",
-      }, "dropped @ gate"));
+      const spec = labelSpec("dropped @ gate", p, 9, { size: 9.5, color: "var(--drop)" });
+      nudge(spec, placed);
+      labelsG.append(paintLabel(spec));
     }
+    for (const spec of seedSpecs) labelsG.append(paintLabel(spec));
+
     const shownRings = shownV.reduce((m, c) => Math.max(m, c.depth), 0);
     ringLabel.textContent = `ring ${shownRings} / ${rings}`;
   }
@@ -211,7 +316,15 @@ export async function mountImpact(container, params, ctx) {
   });
 
   const stage = el("div", { class: "stage dotbg" },
-    svgEl, el("div", { class: "overlay-chips" }, el("span", { class: "chip dim" }, "RUN"), picker), replayBar);
+    svgEl,
+    el("div", { class: "overlay-chips" },
+      el("span", { class: "chip dim" }, "RUN"), picker,
+      explainer(
+        "A replay of one impact run — the seed's blast radius, ring by ring.",
+        "Green passed the verification gate: the edge exists in the graph. Red was claimed but dropped.",
+        "The same data becomes the PR comment.",
+      )),
+    replayBar);
 
   // -- right panel -----------------------------------------------------------
   const scoreRows = [];

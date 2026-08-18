@@ -2,7 +2,7 @@
 // Note: the impact workflow only fires turn events at verify_gate and
 // synthesize; resolve_seeds / expand_ring status is inferred from those.
 
-import { el, svg, getJSON, emptyState, fmtClock, fmtScore } from "../util.js";
+import { el, svg, getJSON, emptyState, explainer, fmtClock, fmtScore } from "../util.js";
 
 export async function mountWorkflow(container, params, ctx) {
   let runs = [];
@@ -37,7 +37,12 @@ export async function mountWorkflow(container, params, ctx) {
   });
 
   const stage = el("div", { class: "wf-stage dotbg" },
-    el("div", { class: "overlay-chips" }, el("span", { class: "chip dim" }, "RUN"), picker),
+    el("div", { class: "overlay-chips" },
+      el("span", { class: "chip dim" }, "RUN"), picker,
+      explainer(
+        "The execution graph of a run, as it happened. Each box is a LangGraph node; the guards are code, not model choice.",
+        "The feed is the run's turn-by-turn event log.",
+      )),
     dagHost);
 
   const feed = el("div", { class: "wf-feed" });
@@ -92,7 +97,7 @@ export async function mountWorkflow(container, params, ctx) {
   function renderAll() {
     const d = derive();
     const s = statuses(d);
-    renderDag(dagHost, d, s);
+    renderDag(dagHost, d, s, workflow);
     renderFeed(feed, d, workflow);
     const live = !d.finish;
     ctx.setLive(live);
@@ -132,9 +137,11 @@ function boxStyle(status) {
   return { fill: "var(--panel)", stroke: "var(--faint)", width: 1.6, dash: "6 4", opacity: 0.55 };
 }
 
-function renderDag(host, d, s) {
+function renderDag(host, d, s, workflow) {
   host.textContent = "";
   const seeds = d.lastTurn?.seeds || [];
+  // impact runs carry seeds/rings; other workflows get generic, honest lines
+  const impactish = Array.isArray(d.lastTurn?.seeds);
   const ringsDone = d.lastTurn?.rings_done ?? d.gates.length;
   const verified = d.lastGate?.verified || [];
   const dropped = d.lastGate?.dropped || [];
@@ -145,17 +152,25 @@ function renderDag(host, d, s) {
 
   const lines = {
     resolve_seeds: {
-      done: [`✓ ${seeds.length} seed${seeds.length === 1 ? "" : "s"}${dur(d.start, d.turns[0])}`, null],
-      running: ["● resolving seeds…", null],
+      done: [impactish
+        ? `✓ ${seeds.length} seed${seeds.length === 1 ? "" : "s"}${dur(d.start, d.turns[0])}`
+        : `✓ done${dur(d.start, d.turns[0])}`, null],
+      running: [impactish ? "● resolving seeds…" : "● starting…", null],
       pending: ["pending", null],
     },
     expand_ring: {
-      done: [`✓ ${ringsDone} ring${ringsDone === 1 ? "" : "s"} expanded`, null],
-      running: [`● running · ring ${ringsDone + 1}`, `${verified.length} verified so far`],
+      done: [impactish
+        ? `✓ ${ringsDone} ring${ringsDone === 1 ? "" : "s"} expanded`
+        : `✓ ${d.gates.length} turn${d.gates.length === 1 ? "" : "s"}`, null],
+      running: [impactish ? `● running · ring ${ringsDone + 1}` : "● running…",
+        `${verified.length} verified so far`],
       pending: ["pending", null],
     },
     verify_gate: {
-      done: [`ring ${ringsDone}: ${Math.max(0, passedRing)} passed`, `${Math.max(0, droppedRing)} dropped (logged)`],
+      done: [impactish
+        ? `ring ${ringsDone}: ${Math.max(0, passedRing)} passed`
+        : `${verified.length} verified`,
+      `${Math.max(0, impactish ? droppedRing : dropped.length)} dropped (logged)`],
       running: ["● verifying…", null],
       pending: ["pending", null],
     },
@@ -219,7 +234,8 @@ function renderDag(host, d, s) {
       }, l1));
     }
     if (l2) {
-      const l2Color = name === "verify_gate" && Math.max(0, droppedRing) > 0
+      const l2Color = name === "verify_gate"
+        && Math.max(0, impactish ? droppedRing : dropped.length) > 0
         ? "var(--drop)" : "var(--faint)";
       g.append(svg("text", {
         x: 320, y: y + 61, "text-anchor": "middle",
@@ -250,22 +266,53 @@ function feedLine(ts, cls, ...content) {
     el("span", {}, ...content));
 }
 
+// Feed lines speak each workflow's own vocabulary, derived from the payload
+// fields that workflow actually fills (impact: seeds/rings, atlas:
+// modules/summaries, docs-drift: claims/stale). Generic when unsure.
 function renderFeed(feed, d, workflow) {
   const stick = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 30;
   feed.textContent = "";
   if (d.start) {
     feed.append(feedLine(d.start.ts, null, el("b", {}, "start"), ` — workflow ${workflow}`));
   }
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   let prevV = 0, prevD = 0, seenSeeds = false;
   for (const e of d.turns) {
-    if (!seenSeeds) {
+    if (!seenSeeds && Array.isArray(e.seeds)) {
+      // impact-shaped run: seeds resolved up front
       seenSeeds = true;
-      const n = (e.seeds || []).length;
+      const n = e.seeds.length;
       feed.append(feedLine(e.ts, null,
-        el("b", {}, "resolve_seeds"), ` — ${n} seed${n === 1 ? "" : "s"} resolved in the graph`));
+        el("b", {}, "resolve_seeds"), ` — ${plural(n, "seed")} resolved in the graph`));
     }
-    if (e.node === "verify_gate") {
-      const v = (e.verified || []).length, dr = (e.dropped || []).length;
+    const verified = e.verified || [];
+    const dropped = e.dropped || [];
+    const isAtlasTurn = verified.some((c) => c && c.module != null)
+      || dropped.some((c) => c && c.module != null);
+    const isDriftTurn = Array.isArray(e.stale) || e.claims != null;
+
+    if (e.node === "verify_gate" && isAtlasTurn) {
+      // atlas: module summaries pass the gate, ungrounded mentions drop
+      const newV = verified.slice(prevV).map((c) => c.module).filter(Boolean);
+      const newD = dropped.slice(prevD);
+      const bits = [el("b", {}, "verify_gate"), " — ",
+        el("span", { style: { color: "var(--pass)" } },
+          `${newV.length} module ${newV.length === 1 ? "summary" : "summaries"} verified`)];
+      if (newV.length > 0 && newV.length <= 3) {
+        bits.push(": ", el("span", { class: "mono" }, newV.join(", ")));
+      }
+      bits.push(", ", el("span", { style: { color: newD.length > 0 ? "var(--drop)" : "var(--muted)" } },
+        `${plural(newD.length, "claim")} dropped`));
+      const first = newD[0];
+      if (first) {
+        bits.push(": ", el("span", { class: "mono" }, String(first.claim || first.qualname || "?")),
+          ` (${first.reason || "dropped"})`);
+      }
+      feed.append(feedLine(e.ts, "gate", ...bits));
+      prevV = verified.length; prevD = dropped.length;
+    } else if (e.node === "verify_gate" && Array.isArray(e.seeds)) {
+      // impact: ring expansion + the gate's pass/drop ledger
+      const v = verified.length, dr = dropped.length;
       const ring = e.rings_done ?? "?";
       const passed = v - prevV, droppedN = dr - prevD;
       feed.append(feedLine(e.ts, null,
@@ -274,7 +321,7 @@ function renderFeed(feed, d, workflow) {
         el("span", { style: { color: "var(--pass)" } }, `${passed} passed`), ", ",
         el("span", { style: { color: droppedN > 0 ? "var(--drop)" : "var(--muted)" } }, `${droppedN} dropped`)];
       if (droppedN > 0) {
-        const first = (e.dropped || [])[prevD];
+        const first = dropped[prevD];
         if (first) {
           bits.push(": ", el("span", { class: "mono" }, first.qualname),
             ` (${first.reason || first.why || "dropped"})`);
@@ -285,6 +332,25 @@ function renderFeed(feed, d, workflow) {
     } else if (e.node === "synthesize") {
       feed.append(feedLine(e.ts, null,
         el("b", {}, "synthesize"), e.has_draft ? " — draft ready for the human gate" : " — nothing to draft"));
+    } else if (isDriftTurn) {
+      // docs-drift: claims checked against the graph, stale surfaced
+      const staleN = (e.stale || []).length;
+      const bits = [el("b", {}, String(e.node)), " — ",
+        `${plural(e.claims ?? staleN, "doc reference")} checked, `,
+        el("span", { style: { color: staleN > 0 ? "var(--drop)" : "var(--pass)" } },
+          `${staleN} stale`)];
+      const first = (e.stale || [])[0];
+      if (first) {
+        bits.push(": ", el("span", { class: "mono" }, String(first.symbol)),
+          ` (${first.doc}:${first.line})`);
+      }
+      feed.append(feedLine(e.ts, null, ...bits));
+    } else if (e.node === "verify_gate") {
+      // unknown workflow shape — stay generic and honest
+      feed.append(feedLine(e.ts, "gate",
+        el("b", {}, "verify_gate"), ` — ${plural(verified.length, "claim")} verified, `
+        + `${plural(dropped.length, "claim")} dropped`));
+      prevV = verified.length; prevD = dropped.length;
     } else {
       feed.append(feedLine(e.ts, null, el("b", {}, String(e.node)), " — turn"));
     }

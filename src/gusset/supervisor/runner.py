@@ -167,6 +167,7 @@ def _execute_workflow(
             return None
         state = _run_graph_workflow(
             "docs-drift", {"db_path": str(db_path), "docs": docs}, session_id,
+            repo_root=event.repo_root,
             with_model=bool(__import__("os").environ.get("ANTHROPIC_API_KEY")),
         )
         if not state.get("stale"):
@@ -229,7 +230,7 @@ def _with_blast_image(state: dict, event: Event, session_id: str) -> str | None:
 
 
 def _run_graph_workflow(
-    name: str, inputs: dict, session_id: str, *, with_model: bool
+    name: str, inputs: dict, session_id: str, *, with_model: bool, repo_root=None
 ) -> dict:
     """Shared runner for atlas/docs-drift: same loop discipline as impact."""
     import asyncio
@@ -244,7 +245,12 @@ def _run_graph_workflow(
     if name == "atlas":
         from gusset.workflows.atlas import build_atlas_graph as build
     else:
-        from gusset.workflows.docsdrift import build_docsdrift_graph as build
+        from functools import partial
+
+        from gusset.workflows.docsdrift import build_docsdrift_graph, load_allowlist
+
+        build = partial(build_docsdrift_graph,
+                        allowlist=load_allowlist(repo_root) if repo_root else None)
 
     model = None
     if with_model:

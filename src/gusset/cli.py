@@ -302,8 +302,13 @@ def docs_drift(
 
     async def _run() -> dict:
         with SqliteSaver.from_conn_string(str(db.parent / "checkpoints.db")) as saver:
+            from gusset.workflows.docsdrift import load_allowlist
+
             graph = build_docsdrift_graph(
-                model, checkpointer=saver, turn_hook=runlog.turn_hook(session_id)
+                model, checkpointer=saver, turn_hook=runlog.turn_hook(session_id),
+                # The allowlist lives beside the graph db (.gusset/..), not
+                # under --repo, which may point at a docs subfolder.
+                allowlist=load_allowlist(db.parent.parent),
             )
             config = {
                 "configurable": {"thread_id": session_id},

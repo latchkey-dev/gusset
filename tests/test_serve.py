@@ -147,6 +147,27 @@ def test_post_csrf_defenses(state):
         httpd.shutdown()
 
 
+def test_allowlist_and_doc_excerpt(state):
+    # allowlist: idempotent append, validation, drift respects it
+    assert state.allowlist_get() == {"entries": []}
+    state.allowlist_add("asyncio.to_thread")
+    state.allowlist_add("asyncio.to_thread")  # idempotent
+    assert state.allowlist_get()["entries"] == ["asyncio.to_thread"]
+    with pytest.raises(ValueError):
+        state.allowlist_add("../etc/passwd")
+    from gusset.workflows.docsdrift import load_allowlist
+
+    assert "asyncio.to_thread" in load_allowlist(state.repo_root)
+
+    # doc excerpt: in-repo docs only, correct window
+    (state.repo_root / "notes.md").write_text(
+        "\n".join(f"line {i}" for i in range(1, 21)) + "\n"
+    )
+    ex = state.doc_excerpt("notes.md", 10)
+    assert ex["start"] == 4 and "line 10" in ex["lines"]
+    assert state.doc_excerpt("../pyproject.toml", 1) is None  # traversal refused
+
+
 def test_setup_write_env_merges_and_gitignores(state):
     env = state.repo_root / ".env"
     env.write_text("EXISTING=1\nANTHROPIC_API_KEY=old\n")

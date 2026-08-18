@@ -4,6 +4,24 @@ Gusset develops Gusset. Every friction point, surprise, or win from using
 the tool on itself lands here — this file is the product backlog the tool
 earns by being used. Newest first.
 
+## 2026-08-18 (serve review round — Daniel's feedback)
+
+- **BUG→FIXED — installed-tool staleness bit again.** The e2e video first
+  recorded the drift run NOT respecting a fresh allowlist entry — the demo
+  shell was running the previously installed gusset, not the working tree.
+  Same class as the .env discovery bug: install-and-use catches what dev
+  runs hide. The video assertion (recording must show "2 claims") now
+  guards it.
+- **BUG→FIXED — allowlist looked in the wrong root.** `docs-drift --repo
+  docs` loaded the allowlist from under docs/, not beside the graph db.
+  Allowlist now anchors to the .gusset parent.
+- **UX round from real use (Daniel):** graph hairball → degree-normalized
+  springs + Laplacian warm start + collision radius + label pills capped
+  at 12; impact label collisions → radial placement + greedy nudge, seed
+  pill always on top; drift buttons were dead UI → allowlist is now a real
+  committable file the workflow respects + inline doc excerpts; every view
+  gained an "ⓘ what is this?" explainer. Screenshots-as-spec worked well.
+
 ## 2026-08-18 (serve build)
 
 - **BUG→FIXED — perfect runs scored as breaches.** The ladder recorded raw

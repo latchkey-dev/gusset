@@ -54,12 +54,19 @@ def make_handler(state: ServeState):
                     return self._json(state.ladder())
                 if route == "/api/drift":
                     return self._json(state.drift(q.get("id")))
+                if route == "/api/allowlist":
+                    return self._json(state.allowlist_get())
+                if route == "/api/doc":
+                    ex = state.doc_excerpt(q.get("doc", ""), int(q.get("line", 1)))
+                    return self._json(ex or {"error": "not found"},
+                                      200 if ex else 404)
                 return self._static(route)
             except Exception as exc:  # noqa: BLE001 — surface, don't crash the server
                 return self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
 
         def do_POST(self) -> None:  # noqa: N802
-            if urlparse(self.path).path != "/api/setup":
+            route = urlparse(self.path).path
+            if route not in ("/api/setup", "/api/allowlist"):
                 return self._json({"error": "not found"}, 404)
             # CSRF hardening: a malicious page can form-POST to localhost
             # without CORS ever blocking it. Require JSON content type
@@ -81,6 +88,11 @@ def make_handler(state: ServeState):
                 body = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
                 return self._json({"error": "bad json"}, 400)
+            if route == "/api/allowlist":
+                try:
+                    return self._json(state.allowlist_add(str(body.get("symbol", ""))))
+                except ValueError as exc:
+                    return self._json({"error": str(exc)}, 400)
             keys = body.get("keys") or {}
             if any("\n" in str(v) or "\r" in str(v) for v in keys.values()):
                 return self._json({"error": "key values must be single-line"}, 400)

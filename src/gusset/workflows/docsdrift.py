@@ -76,11 +76,30 @@ SYSTEM = SystemMessage(
 )
 
 
+ALLOWLIST_FILE = ".gusset/drift-allowlist.txt"
+
+
+def load_allowlist(repo_root) -> set[str]:
+    """User-curated dotted paths that are legitimately outside the graph
+    (stdlib, external APIs, GitHub concepts). One per line, # comments."""
+    from pathlib import Path
+
+    path = Path(repo_root) / ALLOWLIST_FILE
+    if not path.exists():
+        return set()
+    return {
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+
 def build_docsdrift_graph(
     model: BaseChatModel | None = None,
     checkpointer: SqliteSaver | None = None,
     system_preamble: str = "",
     turn_hook=None,
+    allowlist: set[str] | None = None,
 ):
     """Compile the docs-drift execution graph. The GraphStore is opened per
     node from state's db_path so the compiled graph stays checkpointable.
@@ -106,6 +125,9 @@ def build_docsdrift_graph(
                     # `config.toml`-style file mentions match the dotted
                     # pattern but are filenames, not symbol claims.
                     if symbol.rsplit(".", 1)[-1] in _FILE_EXTENSIONS:
+                        continue
+                    # User-allowlisted externals are not claims at all.
+                    if allowlist and symbol in allowlist:
                         continue
                     key = (doc, lineno, symbol)
                     if key not in seen:

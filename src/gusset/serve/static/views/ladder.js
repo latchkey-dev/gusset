@@ -1,6 +1,6 @@
 // #/ladder — autonomy per invariant + the decision ledger (ViewLadder mockup).
 
-import { el, getJSON, emptyState, fmtScore, fmtStamp } from "../util.js";
+import { el, getJSON, emptyState, explainer, fmtScore, fmtStamp } from "../util.js";
 
 const LEVELS = ["report", "comment", "propose", "act"];
 const PROMOTE_RUNS = 15;
@@ -55,7 +55,14 @@ export async function mountLadder(container, params, ctx) {
       el("span", {}, "·"),
       el("span", {}, el("b", {}, "ACT is never ladder-granted — humans only, in gusset.toml"))));
 
-  container.append(el("div", { class: "ladder-wrap dotbg" }, grid, ledgerCard));
+  const explainRow = el("div", { class: "explainer-row" },
+    explainer(
+      "Autonomy is earned: each card is one invariant's score history and its current level.",
+      `Promotions need ${PROMOTE_RUNS} clean runs; demotions take 3 bad in 5.`,
+      "ACT is only ever granted by a human, in gusset.toml — the ladder never reaches it on its own.",
+    ));
+
+  container.append(el("div", { class: "ladder-wrap dotbg" }, explainRow, grid, ledgerCard));
 }
 
 function invariantCard(inv, levelEvent) {

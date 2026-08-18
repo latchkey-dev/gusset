@@ -3,7 +3,7 @@
 // synthesized at doc level ("n refs · all resolve") since per-ref detail
 // for healthy claims isn't shipped.
 
-import { el, svg, getJSON, emptyState } from "../util.js";
+import { el, svg, getJSON, postJSON, emptyState, explainer, toast } from "../util.js";
 
 const VB_W = 760, VB_H = 690;
 
@@ -129,44 +129,104 @@ export async function mountDrift(container, params, ctx) {
     }
   });
 
+  let staleLeft = stale.length;
+  const staleNum = el("span", { style: { color: "var(--drop)" } }, String(staleLeft));
   const pill = el("div", { class: "drift-pill" },
     resolves != null
       ? el("span", {}, el("span", { style: { color: "var(--pass)" } }, String(resolves)), " resolve")
       : null,
-    el("span", {}, el("span", { style: { color: "var(--drop)" } }, String(stale.length)), " stale"),
+    el("span", {}, staleNum, " stale"),
     el("span", { style: { color: "var(--faint)" } }, "docs → symbols"));
 
-  const stage = el("div", { class: "drift-stage dotbg" }, svgEl, pill);
+  const stage = el("div", { class: "drift-stage dotbg" }, svgEl,
+    el("div", { class: "overlay-chips" }, pill,
+      explainer(
+        "Every backticked doc reference, checked against the graph — stale means no symbol resolves to it.",
+        "Allowlist external names (stdlib, GitHub concepts) so they stop reporting; that's a judgment call, so it's a button, not a default.",
+        "Exit code 2 on stale makes this a CI check.",
+      )));
 
   // -- right panel: stale reference cards ------------------------------------
   const cards = el("div", { class: "drift-cards" });
-  if (stale.length === 0) {
-    cards.append(el("div", { class: "footnote" },
-      "Nothing stale — every doc reference resolves in the graph."));
-  }
+  const nothingStale = () => el("div", { class: "footnote" },
+    "Nothing stale — every doc reference resolves in the graph.");
+  if (stale.length === 0) cards.append(nothingStale());
   for (const c of stale) {
     const [pre, bold, post] = explain(c.symbol);
     const why = el("div", { class: "why" }, pre);
     if (bold) why.append(el("b", {}, bold), post ?? "");
+
+    const card = el("div", { class: "stale-card" });
+    const errLine = el("div", { class: "inline-err" });
+    errLine.hidden = true;
+    const showErr = (msg) => { errLine.textContent = msg; errLine.hidden = false; };
+
+    // allowlist → POST /api/allowlist, animate the card out on success
+    const allowBtn = el("button", {
+      class: "chipbtn",
+      title: `skip ${c.symbol} in future drift runs`,
+      onclick: async () => {
+        errLine.hidden = true;
+        allowBtn.disabled = true;
+        try {
+          const res = await postJSON("/api/allowlist", { symbol: c.symbol });
+          if (res && res.error) { showErr(res.error); allowBtn.disabled = false; return; }
+          staleLeft = Math.max(0, staleLeft - 1);
+          staleNum.textContent = String(staleLeft);
+          toast("added to .gusset/drift-allowlist.txt — next drift run will skip it");
+          card.classList.add("leaving");
+          setTimeout(() => {
+            card.remove();
+            if (staleLeft === 0 && !cards.querySelector(".stale-card")) cards.append(nothingStale());
+          }, 280);
+        } catch (err) {
+          showErr(err.message || "allowlist request failed");
+          allowBtn.disabled = false;
+        }
+      },
+    }, "allowlist");
+
+    // open doc → inline excerpt via GET /api/doc, toggles on second click
+    const excerptHost = el("div");
+    let excerptOpen = false;
+    let excerptEl = null;
     const openBtn = el("button", {
       class: "chipbtn dim",
-      title: `copy ${c.doc}:${c.line}`,
-      onclick: async (ev) => {
-        try {
-          await navigator.clipboard.writeText(`${c.doc}:${c.line}`);
-          ev.currentTarget.textContent = "copied ✓";
-          setTimeout(() => { openBtn.textContent = "open doc"; }, 900);
-        } catch { /* clipboard unavailable */ }
+      title: `show ${c.doc}:${c.line}`,
+      onclick: async () => {
+        errLine.hidden = true;
+        if (excerptOpen) {
+          excerptOpen = false;
+          if (excerptEl) excerptEl.hidden = true;
+          openBtn.textContent = "open doc";
+          return;
+        }
+        if (!excerptEl) {
+          openBtn.textContent = "loading…";
+          try {
+            excerptEl = await docExcerpt(c);
+          } catch (err) {
+            openBtn.textContent = "open doc";
+            showErr(err.message || "doc not readable");
+            return;
+          }
+          excerptHost.append(excerptEl);
+        }
+        excerptEl.hidden = false;
+        excerptOpen = true;
+        openBtn.textContent = "close doc";
       },
     }, "open doc");
-    cards.append(el("div", { class: "stale-card" },
+
+    card.append(
       el("div", { class: "head" },
         el("span", { class: "sym" }, c.symbol),
         el("span", { class: "loc" }, `${shortDoc(c.doc)}:${c.line}`)),
       why,
-      el("div", { class: "chips" },
-        el("button", { class: "chipbtn", title: "coming with the allowlist feature" }, "allowlist"),
-        openBtn)));
+      el("div", { class: "chips" }, allowBtn, openBtn),
+      errLine,
+      excerptHost);
+    cards.append(card);
   }
 
   const right = el("div", { class: "drift-right" },
@@ -174,6 +234,34 @@ export async function mountDrift(container, params, ctx) {
     cards);
 
   container.append(el("div", { class: "view3" }, stage, right));
+}
+
+// Fetch the excerpt and render it: mono, numbered from payload.start, the
+// stale line highlighted. Drift runs record doc paths relative to the run's
+// --repo root (often docs/), while /api/doc resolves from the repo root —
+// try the likely candidate first and remember which prefix worked.
+let docPrefix = null; // "" or "docs/", learned from the first successful fetch
+async function docExcerpt(c) {
+  const candidates = docPrefix != null
+    ? [docPrefix]
+    : (c.doc.startsWith("docs/") ? ["", "docs/"] : ["docs/", ""]);
+  let payload = null, lastErr = null;
+  for (const prefix of candidates) {
+    try {
+      payload = await getJSON(`/api/doc?doc=${encodeURIComponent(prefix + c.doc)}&line=${c.line}`);
+      docPrefix = prefix;
+      break;
+    } catch (err) { lastErr = err; }
+  }
+  if (!payload) throw lastErr || new Error("doc not readable");
+  const box = el("div", { class: "doc-excerpt" });
+  (payload.lines || []).forEach((text, i) => {
+    const n = (payload.start ?? 1) + i;
+    box.append(el("div", { class: n === c.line ? "row hot" : "row" },
+      el("span", { class: "ln" }, String(n)),
+      el("span", { class: "tx" }, text || " ")));
+  });
+  return box;
 }
 
 function truncMiddle(s, max) {

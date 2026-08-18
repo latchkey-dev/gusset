@@ -165,6 +165,48 @@ class ServeState:
             "claims_checked": last.get("claims"),
         }
 
+    # -- drift actions -------------------------------------------------------
+
+    def allowlist_get(self) -> dict:
+        from gusset.workflows.docsdrift import load_allowlist
+
+        return {"entries": sorted(load_allowlist(self.repo_root))}
+
+    def allowlist_add(self, symbol: str) -> dict:
+        """Append a dotted path to the drift allowlist (idempotent)."""
+        import re
+
+        from gusset.workflows.docsdrift import ALLOWLIST_FILE, load_allowlist
+
+        if not re.fullmatch(r"[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)+", symbol):
+            raise ValueError(f"not a dotted symbol path: {symbol!r}")
+        entries = load_allowlist(self.repo_root)
+        if symbol not in entries:
+            path = self.repo_root / ALLOWLIST_FILE
+            path.parent.mkdir(parents=True, exist_ok=True)
+            header = (
+                "" if path.exists()
+                else "# Symbols legitimately outside the graph (stdlib, external\n"
+                     "# APIs, concepts). docs-drift skips these. One per line.\n"
+            )
+            with path.open("a") as f:
+                f.write(header + symbol + "\n")
+        return {"entries": sorted(entries | {symbol})}
+
+    def doc_excerpt(self, doc: str, line: int, context: int = 6) -> dict | None:
+        """A few lines of a doc around a stale reference — read-only, and
+        confined to the repo root (no traversal)."""
+        target = (self.repo_root / doc).resolve()
+        if not target.is_file() or self.repo_root.resolve() not in target.parents:
+            return None
+        lines = target.read_text(errors="replace").splitlines()
+        lo = max(0, line - 1 - context)
+        hi = min(len(lines), line + context)
+        return {
+            "doc": doc, "line": line, "start": lo + 1,
+            "lines": lines[lo:hi],
+        }
+
     # -- setup ---------------------------------------------------------------
 
     def validate_keys(self, keys: dict) -> dict:

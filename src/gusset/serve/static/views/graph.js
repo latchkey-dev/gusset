@@ -1,6 +1,6 @@
 // #/graph — force-directed symbol graph on <canvas> (ViewGraph mockup).
 
-import { el, getJSON, emptyState, fmtInt, tokens } from "../util.js";
+import { el, getJSON, emptyState, explainer, fmtInt, tokens } from "../util.js";
 import { createSim } from "../sim.js";
 
 const GROUPS = [
@@ -56,6 +56,32 @@ export async function mountGraph(container, params, ctx) {
   for (const g of GROUPS) groupCounts[g.key] = 0;
   for (const n of nodes) groupCounts[groupOf(n)] += 1;
 
+  const radius = (n) => Math.max(4, Math.min(16, 4 + Math.sqrt(n.degree || 0) * 2.2));
+  for (const n of nodes) n.r = radius(n); // collision radius for the sim
+
+  // Largest connected component — the default render on big graphs, so the
+  // fitted view stays airy instead of a hairball of tiny fragments.
+  const componentOf = new Map(); // id -> component index
+  {
+    let comp = 0;
+    for (const n of nodes) {
+      if (componentOf.has(n.id)) continue;
+      const stack = [n.id];
+      componentOf.set(n.id, comp);
+      while (stack.length) {
+        const id = stack.pop();
+        for (const nb of adj.get(id)) {
+          if (!componentOf.has(nb)) { componentOf.set(nb, comp); stack.push(nb); }
+        }
+      }
+      comp += 1;
+    }
+  }
+  const compSizes = new Map();
+  for (const c of componentOf.values()) compSizes.set(c, (compSizes.get(c) || 0) + 1);
+  const mainComp = [...compSizes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
+  const mainSet = new Set(nodes.filter((n) => componentOf.get(n.id) === mainComp).map((n) => n.id));
+
   // -- state -----------------------------------------------------------------
   const enabled = new Set(["functions", "classes", "modules"]); // mockup default
   let neighborhood = null; // Set of ids when "Show only this neighborhood"
@@ -67,9 +93,13 @@ export async function mountGraph(container, params, ctx) {
   let visLinks = [];
   let dirty = true;
   let colors = tokens();
+  // default-focus the main component when the full graph would be a hairball
+  let capped = nodes.length > 400 && mainSet.size < nodes.length;
 
   const isVisible = (n) =>
-    enabled.has(groupOf(n)) && (!neighborhood || neighborhood.has(n.id));
+    enabled.has(groupOf(n))
+    && (!capped || mainSet.has(n.id))
+    && (!neighborhood || neighborhood.has(n.id));
 
   function recomputeVisible(reheat = true) {
     visNodes = nodes.filter(isVisible);
@@ -77,11 +107,12 @@ export async function mountGraph(container, params, ctx) {
     visLinks = links.filter((l) => vis.has(l.source.id) && vis.has(l.target.id));
     sim = createSim(visNodes, visLinks, { width: SIM_W, height: SIM_H });
     if (reheat) sim.reheat(0.6); else sim.stop();
+    updateShownFoot();
+    updateCapChip();
     dirty = true;
   }
 
   let sim = createSim(nodes.filter(isVisible), [], { width: SIM_W, height: SIM_H });
-  recomputeVisible(true);
 
   // -- left panel ------------------------------------------------------------
   const searchInput = el("input", {
@@ -128,9 +159,15 @@ export async function mountGraph(container, params, ctx) {
   });
 
   const stats = ctx.meta?.stats || {};
-  const totalSymbols = Object.values(stats.symbols || {}).reduce((a, b) => a + b, 0);
-  const totalEdges = Object.values(stats.edges || {}).reduce((a, b) => a + b, 0);
   const unresolved = Number(stats.meta?.unresolved_refs || 0);
+
+  // honest footer: what's on screen vs what the graph holds
+  const shownFoot = el("span");
+  function updateShownFoot() {
+    shownFoot.textContent =
+      `${fmtInt(visNodes.length)} of ${fmtInt(nodes.length)} symbols shown · `
+      + `${fmtInt(visLinks.length)} of ${fmtInt(links.length)} edges`;
+  }
 
   const left = el("div", { class: "side left" },
     searchBox,
@@ -144,7 +181,7 @@ export async function mountGraph(container, params, ctx) {
       legendRow(el("span", { style: { width: "16px", height: "0", borderTop: "2px solid var(--rust)" } }), "edge of selection"),
     ),
     el("div", { class: "side-foot" },
-      `${fmtInt(totalSymbols)} symbols · ${fmtInt(totalEdges)} edges`,
+      shownFoot,
       el("br"),
       `${fmtInt(unresolved)} unresolved (counted,`, el("br"), "never guessed)"),
   );
@@ -153,8 +190,25 @@ export async function mountGraph(container, params, ctx) {
   const canvas = el("canvas", { id: "graph-canvas" });
   const zoomChip = el("span", { class: "chip dim" }, "100%");
   const fitChip = el("button", { class: "chip", onclick: () => { fit(); } }, "fit");
+  const capChip = el("button", {
+    class: "chip",
+    onclick: () => { capped = !capped; recomputeVisible(true); setTimeout(fit, 350); },
+  });
+  function updateCapChip() {
+    capChip.hidden = !(nodes.length > 400 && mainSet.size < nodes.length) || !!neighborhood;
+    capChip.textContent = capped
+      ? `show all ${fmtInt(nodes.length)}`
+      : "main component only";
+  }
   const stage = el("div", { class: "stage dotbg" },
-    canvas, el("div", { class: "overlay-chips" }, fitChip, zoomChip));
+    canvas,
+    el("div", { class: "overlay-chips" },
+      fitChip, zoomChip, capChip,
+      explainer(
+        "Your repo as Gusset sees it: every symbol, and only the edges it could prove — packages ring the code.",
+        "This graph is the ground truth every other view checks against.",
+        "Click a node to explore its dependents, then run impact from it.",
+      )));
 
   // -- right panel -----------------------------------------------------------
   const selQual = el("div", { class: "sel-qual" });
@@ -181,9 +235,21 @@ export async function mountGraph(container, params, ctx) {
   );
 
   container.append(el("div", { class: "view3" }, left, stage, right));
+  recomputeVisible(true);
 
   // -- selection -------------------------------------------------------------
   async function selectNode(n, center = false) {
+    // a search hit may live outside the current subset — reveal it
+    let reveal = false;
+    if (capped && !mainSet.has(n.id)) { capped = false; reveal = true; }
+    if (!enabled.has(groupOf(n))) {
+      enabled.add(groupOf(n));
+      const idx = GROUPS.findIndex((g) => g.key === groupOf(n));
+      const input = filterRows[idx]?.querySelector("input");
+      if (input) input.checked = true;
+      reveal = true;
+    }
+    if (reveal) recomputeVisible(true);
     selected = n;
     selNeighbors = new Set(adj.get(n.id));
     right.style.display = "flex";
@@ -281,8 +347,6 @@ export async function mountGraph(container, params, ctx) {
     dirty = true;
   }
 
-  const radius = (n) => Math.max(4, Math.min(16, 4 + Math.sqrt(n.degree || 0) * 2.2));
-
   function draw() {
     ctx2d.clearRect(0, 0, cw, ch);
     ctx2d.save();
@@ -290,9 +354,10 @@ export async function mountGraph(container, params, ctx) {
     ctx2d.scale(view.k, view.k);
 
     const selId = selected?.id;
-    // idle edges
+    // idle edges — thin and translucent so the structure reads airy
     ctx2d.strokeStyle = colors.edge;
-    ctx2d.lineWidth = 1.3 / view.k;
+    ctx2d.lineWidth = 1 / view.k;
+    ctx2d.globalAlpha = 0.55;
     ctx2d.beginPath();
     for (const l of visLinks) {
       if (selId != null && (l.source.id === selId || l.target.id === selId)) continue;
@@ -300,6 +365,7 @@ export async function mountGraph(container, params, ctx) {
       ctx2d.lineTo(l.target.x, l.target.y);
     }
     ctx2d.stroke();
+    ctx2d.globalAlpha = 1;
     // edges of selection
     if (selId != null) {
       ctx2d.strokeStyle = colors.rust;
@@ -337,30 +403,71 @@ export async function mountGraph(container, params, ctx) {
     }
     ctx2d.restore();
 
-    // labels in screen space (crisp at any zoom)
-    ctx2d.textAlign = "center";
-    const label = (n, font, color, dy) => {
+    // labels in screen space (crisp at any zoom) — only highlighted nodes
+    // ever get one, each on a panel pill so it never tangles with edges,
+    // greedily nudged down so pills never cover each other either.
+    const specs = [];
+    const mkSpec = (n, { font, color, stroke, extra }) => {
       const sx = view.x + view.k * n.x;
       const sy = view.y + view.k * n.y;
-      if (sx < -80 || sx > cw + 80 || sy < -40 || sy > ch + 40) return;
+      if (sx < -160 || sx > cw + 160 || sy < -60 || sy > ch + 60) return;
+      const text = shortName(n.qualname);
       ctx2d.font = font;
+      const w = ctx2d.measureText(text).width + 12;
+      const h = 18;
+      const box = { x: sx - w / 2, y: sy + radius(n) * view.k + 7, w, h };
+      for (let i = 0; i < 40; i++) {
+        const hit = specs.find((s) =>
+          box.x < s.box.x + s.box.w + 2 && s.box.x < box.x + box.w + 2
+          && box.y < s.box.y + s.box.h + 2 && s.box.y < box.y + box.h + 2);
+        if (!hit) break;
+        box.y = hit.box.y + hit.box.h + 3;
+      }
+      specs.push({ box, text, font, color, stroke, extra });
+    };
+    const drawPill = ({ box, text, font, color, stroke, extra }) => {
+      ctx2d.beginPath();
+      if (ctx2d.roundRect) ctx2d.roundRect(box.x, box.y, box.w, box.h, 4);
+      else ctx2d.rect(box.x, box.y, box.w, box.h);
+      ctx2d.fillStyle = colors.panel;
+      ctx2d.fill();
+      ctx2d.strokeStyle = stroke;
+      ctx2d.lineWidth = 1;
+      ctx2d.stroke();
       ctx2d.fillStyle = color;
-      ctx2d.fillText(shortName(n.qualname), sx, sy + dy);
+      ctx2d.textAlign = "center";
+      ctx2d.textBaseline = "middle";
+      ctx2d.font = font;
+      const cxp = box.x + box.w / 2;
+      ctx2d.fillText(text, cxp, box.y + box.h / 2 + 0.5);
+      if (extra) {
+        ctx2d.font = '10px "Spline Sans Mono", monospace';
+        ctx2d.fillStyle = colors.muted;
+        ctx2d.fillText(extra, cxp, box.y + box.h + 11);
+      }
+      ctx2d.textBaseline = "alphabetic";
     };
     if (selected && isVisible(selected)) {
-      const shown = [...selNeighbors].map((id) => byId.get(id)).filter(isVisible)
-        .sort((a, b) => b.degree - a.degree).slice(0, 12);
+      // cap: selected + its highest-degree neighbors, 12 labels total
+      const nbs = [...selNeighbors].map((id) => byId.get(id)).filter(isVisible)
+        .sort((a, b) => b.degree - a.degree);
+      const shown = nbs.slice(0, 11);
+      // selected claims its spot first, neighbors nudge around it
+      mkSpec(selected, {
+        font: '500 11px "Spline Sans Mono", monospace',
+        color: colors.rust, stroke: colors.rust,
+        extra: nbs.length > shown.length ? `+${nbs.length - shown.length} more` : null,
+      });
       for (const n of shown) {
-        label(n, '9.5px "Spline Sans Mono", monospace', colors.muted, radius(n) * view.k + 13);
+        mkSpec(n, { font: '11px "Spline Sans Mono", monospace', color: colors.ink, stroke: colors.line });
       }
-      ctx2d.font = '500 11px "Spline Sans Mono", monospace';
-      ctx2d.fillStyle = colors.rust;
-      ctx2d.fillText(shortName(selected.qualname),
-        view.x + view.k * selected.x,
-        view.y + view.k * selected.y + (radius(selected) + 3) * view.k + 15);
+      for (const s of specs.slice(1)) drawPill(s);
+      if (specs.length) drawPill(specs[0]); // selected on top
     }
     if (hover && hover !== selected && !selNeighbors.has(hover.id)) {
-      label(hover, '10px "Spline Sans Mono", monospace', colors.ink, radius(hover) * view.k + 13);
+      mkSpec(hover, { font: '11px "Spline Sans Mono", monospace', color: colors.ink, stroke: colors.ink });
+      const s = specs[specs.length - 1];
+      if (s) drawPill(s);
     }
   }
 
@@ -441,7 +548,7 @@ export async function mountGraph(container, params, ctx) {
   ro.observe(stage);
   resize();
   // warm the layout so the first paint is already framed, then animate on
-  for (let i = 0; i < 60; i++) sim.tick();
+  for (let i = 0; i < 180; i++) sim.tick();
   fit();
   const onTheme = () => { colors = tokens(); dirty = true; };
   window.addEventListener("gusset-theme", onTheme);

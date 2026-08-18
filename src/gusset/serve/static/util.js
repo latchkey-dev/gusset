@@ -105,6 +105,32 @@ export function codeBox(cmd) {
   return box;
 }
 
+// Small transient notice, bottom center. One at a time.
+export function toast(text) {
+  document.querySelector(".toast")?.remove();
+  const t = el("div", { class: "toast" }, text);
+  document.body.append(t);
+  setTimeout(() => { t.classList.add("out"); }, 2800);
+  setTimeout(() => { t.remove(); }, 3300);
+  return t;
+}
+
+// "ⓘ what is this?" — collapsible per-view explainer, collapsed by default.
+export function explainer(...sentences) {
+  const panel = el("div", { class: "explainer-panel" },
+    sentences.map((s) => el("p", {}, s)));
+  panel.hidden = true;
+  const btn = el("button", {
+    class: "chip dim explainer-toggle", "aria-expanded": "false",
+  }, "ⓘ what is this?");
+  btn.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    btn.setAttribute("aria-expanded", String(!panel.hidden));
+    btn.classList.toggle("dim", panel.hidden);
+  });
+  return el("div", { class: "explainer" }, btn, panel);
+}
+
 export function emptyState(title, sentence, cmd) {
   return el("div", { class: "empty-wrap dotbg" },
     el("div", { class: "card empty" },

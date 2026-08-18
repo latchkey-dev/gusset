@@ -2,7 +2,7 @@
 // Keys are POSTed to the local server only; it validates them live and,
 // on "Save & index repo", writes .env in the repo. Nothing leaves the machine.
 
-import { el, postJSON } from "../util.js";
+import { el, explainer, postJSON } from "../util.js";
 
 export async function mountSetup(container, params, ctx) {
   ctx.setHeader("first run · setup");
@@ -118,7 +118,12 @@ export async function mountSetup(container, params, ctx) {
       el("div", { class: "title" }, "Set up your custodian"),
       el("div", { class: "sub" },
         "Keys are validated live and written to ", el("span", { class: "mono" }, ".env"),
-        " in your repo — local file, never uploaded.")),
+        " in your repo — local file, never uploaded."),
+      el("div", { class: "explainer-row", style: { marginTop: "6px" } },
+        explainer(
+          "Validates your keys live, then writes them to .env in this repo — nothing leaves this machine.",
+          "Every key except Anthropic is optional; skip any and the rest still works.",
+        ))),
     el("div", { class: "setup-body" },
       field("anthropic", "Anthropic API key", "REQUIRED", "filled",
         "Powers the workflows. Checked with a zero-token models call.",
