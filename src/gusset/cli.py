@@ -78,9 +78,12 @@ def impact(
     """Verified blast radius of a change — every claim checked against the graph."""
     import uuid
 
-    from dotenv import load_dotenv
+    from dotenv import find_dotenv, load_dotenv
 
-    load_dotenv()
+    # usecwd: the installed tool's own files live outside the user's repo,
+    # so .env must be found from where the command RUNS, not where gusset
+    # is installed (dogfood catch: worked in dev, failed via uv tool).
+    load_dotenv(find_dotenv(usecwd=True))
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
@@ -161,9 +164,12 @@ def atlas(
     import asyncio
     import uuid
 
-    from dotenv import load_dotenv
+    from dotenv import find_dotenv, load_dotenv
 
-    load_dotenv()
+    # usecwd: the installed tool's own files live outside the user's repo,
+    # so .env must be found from where the command RUNS, not where gusset
+    # is installed (dogfood catch: worked in dev, failed via uv tool).
+    load_dotenv(find_dotenv(usecwd=True))
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
@@ -234,9 +240,12 @@ def docs_drift(
     import asyncio
     import uuid
 
-    from dotenv import load_dotenv
+    from dotenv import find_dotenv, load_dotenv
 
-    load_dotenv()
+    # usecwd: the installed tool's own files live outside the user's repo,
+    # so .env must be found from where the command RUNS, not where gusset
+    # is installed (dogfood catch: worked in dev, failed via uv tool).
+    load_dotenv(find_dotenv(usecwd=True))
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
@@ -360,9 +369,12 @@ def run_event(
 
     This is what the GitHub Action calls; humans normally don't.
     """
-    from dotenv import load_dotenv
+    from dotenv import find_dotenv, load_dotenv
 
-    load_dotenv()
+    # usecwd: the installed tool's own files live outside the user's repo,
+    # so .env must be found from where the command RUNS, not where gusset
+    # is installed (dogfood catch: worked in dev, failed via uv tool).
+    load_dotenv(find_dotenv(usecwd=True))
     from gusset.graph.indexer import index_repo
     from gusset.supervisor import load_config
     from gusset.supervisor.runner import Event, handle_event, receipts_json
