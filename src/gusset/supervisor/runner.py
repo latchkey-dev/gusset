@@ -217,7 +217,9 @@ def _with_blast_image(state: dict, event: Event, session_id: str) -> str | None:
             return None
         ident = ["-c", "user.name=gusset[bot]",
                  "-c", "user.email=gusset@users.noreply.github.com"]
-        subprocess.run(["git", "-C", str(event.repo_root), "add", rel],
+        # -f: .gusset/ is gitignored; the image is a deliberate exception
+        # (live-run bug: plain add staged nothing and the commit failed).
+        subprocess.run(["git", "-C", str(event.repo_root), "add", "-f", rel],
                        check=True, capture_output=True, timeout=15)
         subprocess.run(
             ["git", "-C", str(event.repo_root), *ident, "commit", "-m",
@@ -237,7 +239,11 @@ def _with_blast_image(state: dict, event: Event, session_id: str) -> str | None:
             return None
         url = f"https://raw.githubusercontent.com/{slug}/{branch}/{rel}"
         return f"![blast radius]({url})\n\n{state['draft']}"
-    except Exception:  # noqa: BLE001 — the image is garnish, never a failure
+    except Exception as exc:  # noqa: BLE001 — the image is garnish, never a failure
+        import sys
+
+        print(f"gusset: blast image skipped ({type(exc).__name__}: {exc})",
+              file=sys.stderr)
         return None
 
 

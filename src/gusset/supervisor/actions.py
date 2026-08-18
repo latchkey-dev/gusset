@@ -67,8 +67,10 @@ def deliver(
                        capture_output=True, timeout=30)
         subprocess.run(["git", "add", *[str(p) for p in commit_paths]],
                        check=True, capture_output=True, timeout=30)
+        ident = ["-c", "user.name=gusset[bot]",
+                 "-c", "user.email=gusset@users.noreply.github.com"]
         subprocess.run(
-            ["git", "commit", "-m", title or f"gusset: {invariant}"],
+            ["git", *ident, "commit", "-m", title or f"gusset: {invariant}"],
             check=True, capture_output=True, timeout=30,
         )
         subprocess.run(["git", "push", "-u", "origin", branch, "--force"],
