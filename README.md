@@ -1,6 +1,6 @@
 # Gusset
 
-**An autonomous repo custodian, engineered as graphs.**
+**Autonomous self-healing repo upkeep.**
 
 New here? Read [what Gusset is, plainly](docs/what-is-gusset.md) — the
 two-minute version. Using Claude Code or Cursor? Point it at the

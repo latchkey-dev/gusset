@@ -1,3 +1,3 @@
-"""Gusset — an autonomous repo custodian, engineered as graphs."""
+"""Gusset — autonomous self-healing repo upkeep."""
 
 __version__ = "0.1.0"

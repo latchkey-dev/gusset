@@ -14,4 +14,4 @@ def test_version_command():
 
 def test_no_args_shows_help():
     result = runner.invoke(app, [])
-    assert "custodian" in result.output
+    assert "self-healing repo upkeep" in result.output

@@ -16,7 +16,7 @@ from gusset import __version__
 
 app = typer.Typer(
     name="gusset",
-    help="An autonomous repo custodian, engineered as graphs.",
+    help="Autonomous self-healing repo upkeep.",
     no_args_is_help=True,
 )
 
@@ -33,7 +33,7 @@ def _db_path(db: Path | None) -> Path:
 
 @app.callback()
 def main() -> None:
-    """An autonomous repo custodian, engineered as graphs."""
+    """Autonomous self-healing repo upkeep."""
 
 
 @app.command()
