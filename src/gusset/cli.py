@@ -150,6 +150,111 @@ def impact(
         typer.echo(f"trace: {url}")
 
 
+@app.command()
+def init(
+    repo: Path = typer.Argument(Path("."), help="Repo to install Gusset into."),
+) -> None:
+    """Install Gusset: gusset.toml + the GitHub Actions workflow."""
+    from gusset.supervisor.config import DEFAULT_TOML
+
+    toml_path = repo / "gusset.toml"
+    if toml_path.exists():
+        typer.echo(f"{toml_path} already exists — not overwriting.", err=True)
+        raise typer.Exit(1)
+    toml_path.write_text(DEFAULT_TOML)
+
+    wf_dir = repo / ".github" / "workflows"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / "gusset.yml").write_text(ACTION_YML)
+    typer.echo(f"wrote {toml_path} and {wf_dir / 'gusset.yml'}")
+    typer.echo("Add ANTHROPIC_API_KEY (required) and PANDAPROBE_API_KEY / "
+               "PANDAPROBE_PROJECT_NAME / HARNESS_REPAIR_MODEL (recommended) "
+               "as repository secrets.")
+
+
+@app.command("run-event")
+def run_event(
+    trigger: str = typer.Argument(..., help="pull_request | push | cron | manual"),
+    repo: Path = typer.Option(Path("."), help="Repo root."),
+    pr: int | None = typer.Option(None, help="PR number, for comment delivery."),
+    diff: str | None = typer.Option(None, help="Git range for impact seeds."),
+    db: Path = typer.Option(DEFAULT_DB, help="Graph database path."),
+    config_path: Path = typer.Option(Path("gusset.toml"), "--config"),
+) -> None:
+    """Supervisor entry point: route one event through the invariants.
+
+    This is what the GitHub Action calls; humans normally don't.
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    from gusset.graph.indexer import index_repo
+    from gusset.supervisor import load_config
+    from gusset.supervisor.runner import Event, handle_event, receipts_json
+
+    if not config_path.exists():
+        typer.echo(f"No {config_path} — run `gusset init` first.", err=True)
+        raise typer.Exit(1)
+    db.parent.mkdir(parents=True, exist_ok=True)
+    index_repo(repo, db)  # the graph is cheap; a fresh one is always honest
+
+    receipts = handle_event(
+        Event(trigger, repo.resolve(), pr_number=pr, diff_range=diff),
+        load_config(config_path),
+        db_path=db,
+    )
+    typer.echo(receipts_json(receipts))
+    if any(r.outcome == "ran" for r in receipts):
+        typer.echo("done", err=True)
+
+
+ACTION_YML = """\
+name: Gusset
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 0"   # weekly, Sunday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  custodian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install gusset
+        run: uv tool install git+https://github.com/thedefaultman/gusset
+      - name: Route event
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PANDAPROBE_API_KEY: ${{ secrets.PANDAPROBE_API_KEY }}
+          PANDAPROBE_PROJECT_NAME: ${{ secrets.PANDAPROBE_PROJECT_NAME }}
+          HARNESS_REPAIR_MODEL: ${{ secrets.HARNESS_REPAIR_MODEL }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gusset run-event pull_request \\
+              --pr "${{ github.event.pull_request.number }}" \\
+              --diff "origin/${{ github.base_ref }}...HEAD"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            gusset run-event push --diff "${{ github.event.before }}..HEAD"
+          else
+            gusset run-event cron
+          fi
+"""
+
+
 async def _finish(run_coro, heal, db: Path, out: Path, session_id: str) -> dict:
     """Awaits the run, then scoring + settlement on the same loop."""
     state = await run_coro
