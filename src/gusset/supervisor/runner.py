@@ -204,19 +204,31 @@ def _with_blast_image(state: dict, event: Event, session_id: str) -> str | None:
         out_path.write_text(svg)
         if event.pr_number is None:
             return None  # local run: file written, no comment to decorate
-        branch = subprocess.run(
+        import os
+
+        # In Actions, pull_request checkouts are detached HEAD — the PR's
+        # real branch is in GITHUB_HEAD_REF (live-run bug: rev-parse gave
+        # "HEAD" and the push silently failed, comment shipped imageless).
+        branch = os.environ.get("GITHUB_HEAD_REF") or subprocess.run(
             ["git", "-C", str(event.repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True, text=True, timeout=15,
         ).stdout.strip()
+        if not branch or branch == "HEAD":
+            return None
+        ident = ["-c", "user.name=gusset[bot]",
+                 "-c", "user.email=gusset@users.noreply.github.com"]
         subprocess.run(["git", "-C", str(event.repo_root), "add", rel],
                        check=True, capture_output=True, timeout=15)
         subprocess.run(
-            ["git", "-C", str(event.repo_root), "commit", "-m",
+            ["git", "-C", str(event.repo_root), *ident, "commit", "-m",
              f"gusset: blast-radius image for {session_id}"],
             check=True, capture_output=True, timeout=15,
         )
-        subprocess.run(["git", "-C", str(event.repo_root), "push", "origin", branch],
-                       check=True, capture_output=True, timeout=60)
+        subprocess.run(
+            ["git", "-C", str(event.repo_root), "push", "origin",
+             f"HEAD:{branch}"],
+            check=True, capture_output=True, timeout=60,
+        )
         slug = subprocess.run(
             ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
             capture_output=True, text=True, timeout=15, cwd=event.repo_root,

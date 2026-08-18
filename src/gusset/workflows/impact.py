@@ -256,7 +256,10 @@ def build_impact_graph(
                 system_preamble
                 + "Summarize this verified impact analysis in 2-4 sentences for a "
                 "pull-request comment. Every symbol listed is confirmed affected; "
-                "do not add symbols, do not hedge about ones not listed."
+                "do not add symbols, do not hedge about ones not listed. "
+                "Output ONLY the summary prose itself — no headings, no preamble, "
+                "no notes about your tools, capabilities, or process (live-run "
+                "regression: tool-availability notes leaked into a PR comment)."
             ),
             HumanMessage(
                 f"Seeds: {', '.join(state['seeds'])}\nVerified impacts:\n{listing}"
