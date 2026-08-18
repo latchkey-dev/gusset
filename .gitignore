@@ -7,3 +7,4 @@ graph.db
 harness/
 .pytest_cache/
 dist/
+.gusset/

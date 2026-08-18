@@ -1,0 +1,97 @@
+"""Graph substrate tests against the known fixture repo.
+
+The fixture's ground truth:
+  app.main        calls  pkg.lib.helper, instantiates pkg.models.Child
+  pkg.lib.helper  calls  pkg.lib._internal
+  pkg.models.Child inherits pkg.models.Base
+  pkg.lib.unused_fn has no callers (dead)
+"""
+
+from pathlib import Path
+
+import pytest
+
+from gusset.graph import GraphStore
+from gusset.graph.indexer import index_repo
+
+FIXTURE = Path(__file__).parent / "fixtures" / "pyproj"
+
+
+@pytest.fixture(scope="module")
+def store(tmp_path_factory) -> GraphStore:
+    db = tmp_path_factory.mktemp("db") / "graph.db"
+    counts = index_repo(FIXTURE, db)
+    assert counts["files"] == 4
+    s = GraphStore(db)
+    yield s
+    s.close()
+
+
+def test_symbols_extracted(store: GraphStore):
+    helper = store.symbol_by_qualname("pkg.lib.helper")
+    assert helper is not None and helper.kind == "function"
+    child = store.symbol_by_qualname("pkg.models.Child")
+    assert child is not None and child.kind == "class"
+    describe = store.symbol_by_qualname("pkg.models.Child.describe")
+    assert describe is not None and describe.kind == "method"
+    assert store.symbol_by_qualname("app.main") is not None
+
+
+def test_call_edges(store: GraphStore):
+    assert store.edge_exists("app.main", "pkg.lib.helper", "calls")
+    assert store.edge_exists("pkg.lib.helper", "pkg.lib._internal", "calls")
+
+
+def test_inheritance_edge(store: GraphStore):
+    assert store.edge_exists("pkg.models.Child", "pkg.models.Base", "inherits")
+
+
+def test_import_edges(store: GraphStore):
+    assert store.edge_exists("app", "pkg.models", "imports")
+
+
+def test_no_fabricated_edges(store: GraphStore):
+    """The oracle must never contain edges that aren't in the code."""
+    assert not store.edge_exists("app.main", "pkg.lib.unused_fn")
+    assert not store.edge_exists("pkg.lib.helper", "app.main", "calls")
+
+
+def test_reverse_closure_is_impact_ground_truth(store: GraphStore):
+    internal = store.symbol_by_qualname("pkg.lib._internal")
+    closure = store.reverse_closure([internal.id])
+    quals = {store.conn.execute(
+        "SELECT qualname FROM symbols WHERE id = ?", (sid,)
+    ).fetchone()[0]: depth for sid, depth in closure.items()}
+    # Changing _internal impacts helper (depth 1) which impacts main (depth 2).
+    assert quals["pkg.lib._internal"] == 0
+    assert quals["pkg.lib.helper"] == 1
+    assert quals["app.main"] == 2
+    assert "pkg.lib.unused_fn" not in quals
+
+
+def test_dead_symbols(store: GraphStore):
+    dead = {s.qualname for s in store.dead_symbols()}
+    assert "pkg.lib.unused_fn" in dead
+    assert "pkg.lib.helper" not in dead
+    assert "pkg.lib._internal" not in dead
+
+
+def test_dependents_and_dependencies(store: GraphStore):
+    helper = store.symbol_by_qualname("pkg.lib.helper")
+    dependent_quals = {s.qualname for s in store.dependents(helper.id)}
+    assert "app.main" in dependent_quals
+    dep_quals = {s.qualname for s in store.dependencies(helper.id)}
+    assert "pkg.lib._internal" in dep_quals
+
+
+def test_search(store: GraphStore):
+    hits = {s.qualname for s in store.search("helper")}
+    assert "pkg.lib.helper" in hits
+
+
+def test_stats(store: GraphStore):
+    stats = store.stats()
+    assert stats["files"] == 4
+    assert stats["symbols"]["class"] == 2
+    assert stats["edges"]["calls"] >= 2
+    assert stats["meta"]["commit"]  # always recorded, "no-git" if absent
