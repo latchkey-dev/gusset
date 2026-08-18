@@ -61,12 +61,29 @@ def make_handler(state: ServeState):
         def do_POST(self) -> None:  # noqa: N802
             if urlparse(self.path).path != "/api/setup":
                 return self._json({"error": "not found"}, 404)
+            # CSRF hardening: a malicious page can form-POST to localhost
+            # without CORS ever blocking it. Require JSON content type
+            # (unsettable by cross-origin forms without a preflight, which
+            # this server never approves) and a local Origin when present.
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+            if ctype != "application/json":
+                return self._json({"error": "content-type must be application/json"}, 415)
+            origin = self.headers.get("Origin")
+            if origin and urlparse(origin).hostname not in ("127.0.0.1", "localhost"):
+                return self._json({"error": "cross-origin request refused"}, 403)
+            # Host check defeats DNS rebinding (attacker domain resolving to
+            # 127.0.0.1 carries its own hostname in Host, not ours).
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+            if host not in ("127.0.0.1", "localhost"):
+                return self._json({"error": "host not local"}, 403)
             length = int(self.headers.get("Content-Length", 0))
             try:
                 body = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
                 return self._json({"error": "bad json"}, 400)
             keys = body.get("keys") or {}
+            if any("\n" in str(v) or "\r" in str(v) for v in keys.values()):
+                return self._json({"error": "key values must be single-line"}, 400)
             try:
                 if body.get("action") == "write":
                     path = state.write_env(keys)

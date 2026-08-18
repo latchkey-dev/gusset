@@ -17,12 +17,13 @@ def test_index_stats_deadcode_roundtrip(tmp_path):
     result = runner.invoke(app, ["index", str(FIXTURE), "--db", str(db)])
     assert result.exit_code == 0, result.output
     counts = json.loads(result.output)
-    assert counts["files"] == 4 and counts["edges"] > 0
+    # 4 python files + pyproject.toml (manifest files row).
+    assert counts["files"] == 5 and counts["edges"] > 0
 
     result = runner.invoke(app, ["stats", "--db", str(db)])
     assert result.exit_code == 0
     stats = json.loads(result.output)
-    assert stats["files"] == 4
+    assert stats["files"] == 5
 
     result = runner.invoke(app, ["deadcode", "--db", str(db)])
     assert result.exit_code == 0

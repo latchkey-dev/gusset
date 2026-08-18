@@ -1,1 +1,39 @@
-<!doctype html><title>gusset</title>placeholder
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>gusset</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20104%20104'%3E%3Ccircle%20cx='52'%20cy='52'%20r='11'%20fill='%23b4551e'/%3E%3Ccircle%20cx='52'%20cy='52'%20r='27'%20stroke='%2322211d'%20stroke-width='8'%20fill='none'/%3E%3Ccircle%20cx='52'%20cy='52'%20r='43'%20stroke='%238a8577'%20stroke-width='6'%20stroke-dasharray='10%2011'%20fill='none'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Spline+Sans+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header id="hdr">
+    <svg class="logo" width="22" height="22" viewBox="0 0 104 104" fill="none" aria-hidden="true">
+      <circle cx="52" cy="52" r="11" style="fill: var(--rust)"/>
+      <circle cx="52" cy="52" r="27" style="stroke: var(--ink)" stroke-width="8"/>
+      <circle cx="52" cy="52" r="43" style="stroke: #8a8577" stroke-width="6" stroke-dasharray="10 11"/>
+    </svg>
+    <span class="wordmark">GUSSET</span>
+    <span id="hdr-meta" class="hdr-meta"></span>
+    <span id="hdr-live" class="live-badge" hidden><span class="live-dot"></span>LIVE</span>
+    <div class="hdr-right">
+      <span id="hdr-local" class="hdr-local" hidden></span>
+      <nav id="nav">
+        <a class="tab" href="#/graph" data-route="graph">GRAPH</a>
+        <a class="tab" href="#/impact" data-route="impact">IMPACT</a>
+        <a class="tab" href="#/workflow" data-route="workflow">WORKFLOW</a>
+        <a class="tab" href="#/drift" data-route="drift">DRIFT</a>
+        <a class="tab" href="#/ladder" data-route="ladder">LADDER</a>
+        <a class="tab" href="#/setup" data-route="setup">SETUP</a>
+      </nav>
+      <button id="theme-toggle" class="theme-toggle" title="theme" aria-label="toggle theme">◐</button>
+    </div>
+  </header>
+  <main id="view"></main>
+</body>
+</html>

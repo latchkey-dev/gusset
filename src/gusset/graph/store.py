@@ -22,6 +22,7 @@ class Symbol:
     kind: str
     start_line: int
     end_line: int
+    version: str | None = None  # packages only; None for code symbols
 
 
 def _symbol(row: sqlite3.Row) -> Symbol:
@@ -33,11 +34,13 @@ def _symbol(row: sqlite3.Row) -> Symbol:
         kind=row["kind"],
         start_line=row["start_line"],
         end_line=row["end_line"],
+        version=row["version"],
     )
 
 
 _SYMBOL_SELECT = """
-SELECT s.id, f.path, s.name, s.qualname, s.kind, s.start_line, s.end_line
+SELECT s.id, f.path, s.name, s.qualname, s.kind, s.start_line, s.end_line,
+       s.version
 FROM symbols s JOIN files f ON f.id = s.file_id
 """
 
@@ -189,17 +192,37 @@ class GraphStore:
         """Symbols with no incoming edges — candidates for deletion.
 
         Conservative exclusions: modules (files are entered externally),
-        dunder methods (called by the runtime), and `main` (entry points).
+        packages (an unimported dependency is not dead code), dunder
+        methods (called by the runtime), and `main` (entry points).
         """
         rows = self.conn.execute(
             _SYMBOL_SELECT
             + """
-            WHERE s.kind != 'module'
+            WHERE s.kind NOT IN ('module', 'package')
               AND s.name NOT LIKE '\\_\\_%' ESCAPE '\\'
               AND s.name != 'main'
               AND s.id NOT IN (SELECT dst FROM edges)
             ORDER BY f.path, s.start_line
             """
+        ).fetchall()
+        return [_symbol(r) for r in rows]
+
+    # -- external dependencies ------------------------------------------------
+
+    def packages(self) -> list[Symbol]:
+        """All external-dependency nodes (kind='package'), with versions."""
+        rows = self.conn.execute(
+            _SYMBOL_SELECT + "WHERE s.kind = 'package' ORDER BY s.name"
+        ).fetchall()
+        return [_symbol(r) for r in rows]
+
+    def package_dependents(self, package_id: int) -> list[Symbol]:
+        """Symbols that import this package (via imports_external edges)."""
+        rows = self.conn.execute(
+            _SYMBOL_SELECT
+            + "WHERE s.id IN (SELECT src FROM edges "
+            "                 WHERE dst = ? AND kind = 'imports_external')",
+            (package_id,),
         ).fetchall()
         return [_symbol(r) for r in rows]
 
@@ -211,10 +234,13 @@ class GraphStore:
         The deterministic partition shared by the atlas workflow (T1) and the
         oracle's module_coverage score — one truth source, no LLM. Clusters
         are sorted by name; each symbol list is ordered by path, start line,
-        then id. A single-file repo yields exactly one cluster.
+        then id. A single-file repo yields exactly one cluster. Package
+        nodes are excluded — clusters partition the repo's own code, and
+        external deps have their own queries (packages, package_dependents).
         """
         rows = self.conn.execute(
-            _SYMBOL_SELECT + "ORDER BY f.path, s.start_line, s.id"
+            _SYMBOL_SELECT
+            + "WHERE s.kind != 'package' ORDER BY f.path, s.start_line, s.id"
         ).fetchall()
         clusters: dict[str, list[Symbol]] = {}
         for r in rows:
@@ -222,11 +248,13 @@ class GraphStore:
         return dict(sorted(clusters.items()))
 
     def edge_listing(self) -> list[dict]:
-        """Every edge with both endpoints' qualnames and file paths.
+        """Every code-graph edge with both endpoints' qualnames and file paths.
 
         The substrate for module-level views: cluster_edges() and the atlas
         per-module prompts are built from exactly this list. Deterministic
-        ORDER BY, plain SQL, no LLM.
+        ORDER BY, plain SQL, no LLM. imports_external edges are excluded so
+        the module views stay a partition of the repo's own code (external
+        deps are served by packages()/package_dependents()).
         """
         rows = self.conn.execute(
             """
@@ -236,6 +264,7 @@ class GraphStore:
             FROM edges e
             JOIN symbols a ON a.id = e.src JOIN files fa ON fa.id = a.file_id
             JOIN symbols b ON b.id = e.dst JOIN files fb ON fb.id = b.file_id
+            WHERE e.kind != 'imports_external'
             ORDER BY fa.path, e.line, a.qualname, b.qualname, e.kind
             """
         ).fetchall()
@@ -282,5 +311,9 @@ class GraphStore:
             "files": c.execute("SELECT COUNT(*) n FROM files").fetchone()["n"],
             "symbols": by_kind,
             "edges": by_edge,
+            # Explicit keys so they read 0 (not absent) when a repo has no
+            # manifests — the external layer's health is always visible.
+            "packages": by_kind.get("package", 0),
+            "imports_external": by_edge.get("imports_external", 0),
             "meta": meta,
         }

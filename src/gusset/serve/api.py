@@ -213,7 +213,16 @@ class ServeState:
         for key, value in updates.items():
             if key not in seen:
                 lines.append(f"{key}={value}")
-        env_path.write_text("\n".join(lines) + "\n")
+        # Secrets file: atomic replace with owner-only permissions.
+        data = ("\n".join(lines) + "\n").encode()
+        tmp = env_path.with_suffix(".env.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, data)
+        finally:
+            os.close(fd)
+        os.replace(tmp, env_path)
+        os.chmod(env_path, 0o600)
         _ensure_gitignored(self.repo_root, ".env")
         return str(env_path)
 

@@ -114,6 +114,39 @@ def test_http_routes_end_to_end(state):
         httpd.shutdown()
 
 
+def test_post_csrf_defenses(state):
+    """Cross-origin form POSTs must be refused; .env injection blocked."""
+    httpd = make_server(state.repo_root, state.db_path, port=0)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{port}/api/setup"
+
+    def post(data, headers):
+        req = urllib.request.Request(base, data=data, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    try:
+        # form content type (what a cross-origin <form> sends) → 415
+        assert post(b"a=1", {"Content-Type": "application/x-www-form-urlencoded"}) == 415
+        # non-local Origin → 403
+        assert post(b"{}", {"Content-Type": "application/json",
+                            "Origin": "https://evil.example"}) == 403
+        # newline smuggling into .env → 400
+        body = json.dumps({"action": "write",
+                           "keys": {"anthropic": "x\nEVIL=1"}}).encode()
+        assert post(body, {"Content-Type": "application/json"}) == 400
+        # legitimate local write still works
+        body = json.dumps({"action": "write", "keys": {"anthropic": "sk-ok"}}).encode()
+        assert post(body, {"Content-Type": "application/json",
+                           "Origin": f"http://127.0.0.1:{port}"}) == 200
+    finally:
+        httpd.shutdown()
+
+
 def test_setup_write_env_merges_and_gitignores(state):
     env = state.repo_root / ".env"
     env.write_text("EXISTING=1\nANTHROPIC_API_KEY=old\n")
@@ -124,6 +157,7 @@ def test_setup_write_env_merges_and_gitignores(state):
     assert text.count("ANTHROPIC_API_KEY") == 1
     assert "LATCHKEY_TOKEN=lk_live_x" in text
     assert ".env" in (state.repo_root / ".gitignore").read_text()
+    assert (Path(path).stat().st_mode & 0o777) == 0o600  # owner-only secrets
 
 
 def test_cli_impact_writes_runlog(tmp_path):

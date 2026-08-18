@@ -5,6 +5,8 @@ The fixture's ground truth:
   pkg.lib.helper  calls  pkg.lib._internal
   pkg.models.Child inherits pkg.models.Base
   pkg.lib.unused_fn has no callers (dead)
+  app             imports requests + yaml (declared in pyproject.toml)
+                  and nonexistent_thing (undeclared — stays unresolved)
 """
 
 from pathlib import Path
@@ -21,7 +23,8 @@ FIXTURE = Path(__file__).parent / "fixtures" / "pyproj"
 def store(tmp_path_factory) -> GraphStore:
     db = tmp_path_factory.mktemp("db") / "graph.db"
     counts = index_repo(FIXTURE, db)
-    assert counts["files"] == 4
+    # 4 python files + pyproject.toml (indexed as a manifest files row).
+    assert counts["files"] == 5
     s = GraphStore(db)
     yield s
     s.close()
@@ -135,7 +138,8 @@ def test_cluster_edges_are_inter_module_only(store: GraphStore):
 
 def test_stats(store: GraphStore):
     stats = store.stats()
-    assert stats["files"] == 4
+    # 4 python files + pyproject.toml (manifest files row).
+    assert stats["files"] == 5
     assert stats["symbols"]["class"] == 2
     assert stats["edges"]["calls"] >= 2
     assert stats["meta"]["commit"]  # always recorded, "no-git" if absent

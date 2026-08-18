@@ -1,0 +1,7 @@
+[project]
+name = "pyproj-fixture"
+version = "0.0.0"
+dependencies = [
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]

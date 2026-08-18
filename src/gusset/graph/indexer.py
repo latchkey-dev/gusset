@@ -1,7 +1,11 @@
 """Two-pass repo indexer.
 
-Pass 1: extract every definition in every supported file.
-Pass 2: resolve references to definitions and write edges.
+Pass 1: extract every definition in every supported file, plus one package
+node per external dependency declared in a manifest (pyproject.toml,
+package.json, go.mod at the root or one level deep).
+Pass 2: resolve references to definitions and write edges. Import refs that
+miss internally get one exact shot at a declared package (see
+_resolve_external) before counting as unresolved.
 
 Resolution is heuristic by design (no type inference — see docs): same-file
 first, then unique global name. Ambiguous or external references are counted
@@ -16,12 +20,33 @@ import subprocess
 from pathlib import Path
 
 from gusset.graph.extract import LANGUAGE_BY_SUFFIX, Extraction, extract
+from gusset.graph.manifest import norm_dist, parse_manifests
 from gusset.graph.schema import connect
 
 SKIP_DIRS = {
     ".git", ".hg", ".venv", "venv", "node_modules", "__pycache__",
     ".mypy_cache", ".pytest_cache", "dist", "build", ".tox", ".eggs",
 }
+
+# Python import name -> distribution name, for the well-known cases where
+# they differ. Exact table, never fuzzy — an unlisted mismatch stays
+# unresolved rather than being guessed.
+PY_IMPORT_TO_DIST = {
+    "PIL": "pillow",
+    "yaml": "pyyaml",
+    "dotenv": "python-dotenv",
+    "cv2": "opencv-python",
+    "sklearn": "scikit-learn",
+    "bs4": "beautifulsoup4",
+    "tree_sitter_language_pack": "tree-sitter-language-pack",
+    "tree_sitter": "tree-sitter",
+    "langchain_core": "langchain-core",
+    "langchain_anthropic": "langchain-anthropic",
+    "pandaprobe_harness": "pandaprobe-harness",
+}
+# Namespace packages shared by many distributions (google-cloud-*, protobuf,
+# ...): any single mapping would be a guess, so `import google` never maps.
+PY_IMPORT_SKIP = {"google"}
 
 
 def _module_qualname(rel_path: Path) -> str:
@@ -43,6 +68,92 @@ def _git_commit(root: Path) -> str | None:
         return None
 
 
+class _PackageMaps:
+    """Exact lookup tables from import names to package symbol ids."""
+
+    def __init__(self) -> None:
+        self.py_by_import: dict[str, int] = {}  # default import name -> id
+        self.py_by_dist: dict[str, int] = {}    # normalized dist name -> id
+        self.js_by_name: dict[str, int] = {}    # verbatim npm name -> id
+        self.go_by_path: dict[str, int] = {}    # module path -> id
+
+
+def _insert_packages(cur, root: Path) -> _PackageMaps:
+    """One files row per manifest, one package symbol per declared dep.
+
+    Dedup: first declaration wins per (ecosystem, name) — root manifests
+    before subdirectories (parse_manifests order). A cross-ecosystem name
+    collision on qualname keeps the first node only, and the loser maps to
+    nothing: pointing its imports at another ecosystem's package would be
+    a guess.
+    """
+    maps = _PackageMaps()
+    file_ids: dict[str, int] = {}
+    seen_qualnames: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    for dep in parse_manifests(root, SKIP_DIRS):
+        key = (dep.ecosystem, dep.name)
+        qualname = f"pkg:{dep.name}"
+        if key in seen or qualname in seen_qualnames:
+            continue
+        seen.add(key)
+        seen_qualnames.add(qualname)
+        if dep.source_file not in file_ids:
+            source = (root / dep.source_file).read_bytes()
+            cur.execute(
+                "INSERT INTO files(path, language, sha) VALUES (?, 'manifest', ?)",
+                (dep.source_file, hashlib.sha256(source).hexdigest()),
+            )
+            file_ids[dep.source_file] = cur.lastrowid
+        cur.execute(
+            "INSERT INTO symbols(file_id, name, qualname, kind, start_line, "
+            "end_line, version) VALUES (?, ?, ?, 'package', 1, 1, ?)",
+            (file_ids[dep.source_file], dep.name, qualname,
+             dep.resolved_version or dep.version_spec),
+        )
+        pid = cur.lastrowid
+        if dep.ecosystem == "python":
+            maps.py_by_import[dep.name.lower().replace("-", "_")] = pid
+            maps.py_by_dist[norm_dist(dep.name)] = pid
+        elif dep.ecosystem == "js":
+            maps.js_by_name[dep.name] = pid
+        elif dep.ecosystem == "go":
+            maps.go_by_path[dep.name] = pid
+    return maps
+
+
+def _resolve_external(language: str, target: str, maps: _PackageMaps) -> int | None:
+    """Map an unresolved import to a declared package — exactly or not at all.
+
+    python: first dotted segment, via the explicit mismatch table or the
+    default rule (package name lowercased, "-" -> "_"). js: the verbatim
+    bare specifier ("lodash/fp" is not "lodash" — no subpath stripping).
+    go: the import path under the longest declared module path prefix.
+    Relative specifiers and anything unmatched return None.
+    """
+    if language == "python":
+        segment = target.split(".", 1)[0]
+        if not segment or segment in PY_IMPORT_SKIP:
+            return None
+        dist = PY_IMPORT_TO_DIST.get(segment)
+        if dist is not None:
+            return maps.py_by_dist.get(norm_dist(dist))
+        return maps.py_by_import.get(segment)
+    if language in ("typescript", "tsx", "javascript"):
+        if target.startswith((".", "/")):
+            return None
+        return maps.js_by_name.get(target)
+    if language == "go":
+        matches = [
+            path for path in maps.go_by_path
+            if target == path or target.startswith(path + "/")
+        ]
+        if not matches:
+            return None
+        return maps.go_by_path[max(matches, key=len)]
+    return None
+
+
 def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
     """Index `root` into `db_path`, replacing any prior index. Returns counts."""
     root = Path(root).resolve()
@@ -51,8 +162,8 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
     for table in ("edges", "symbols", "files", "meta"):
         cur.execute(f"DELETE FROM {table}")
 
-    # (file_id, module_qual, rel_dir, ex)
-    extractions: list[tuple[int, str, str, Extraction]] = []
+    # (file_id, module_qual, rel_dir, language, ex)
+    extractions: list[tuple[int, str, str, str, Extraction]] = []
     unresolved = 0
 
     # -- pass 1: definitions ------------------------------------------------
@@ -84,12 +195,18 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
                 (file_id, d.name, f"{module_qual}.{d.qualname}", d.kind,
                  d.start_line, d.end_line),
             )
-        extractions.append((file_id, module_qual, rel.parent.as_posix(), ex))
+        extractions.append((file_id, module_qual, rel.parent.as_posix(), language, ex))
+
+    # -- pass 1b: package nodes from manifests --------------------------------
+    packages = _insert_packages(cur, root)
 
     # -- resolution maps ----------------------------------------------------
+    # Packages are excluded: internal resolution (calls, unique-name imports)
+    # must never land on a dependency node — that path is reserved for the
+    # exact external mapping below.
     by_qualname: dict[str, int] = {}
     by_name: dict[str, list[int]] = {}
-    for row in cur.execute("SELECT id, name, qualname FROM symbols"):
+    for row in cur.execute("SELECT id, name, qualname FROM symbols WHERE kind != 'package'"):
         by_qualname[row[2]] = row[0]
         by_name.setdefault(row[1], []).append(row[0])
 
@@ -106,11 +223,12 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
         return ids[0] if len(ids) == 1 else None  # unique global match only
 
     # -- pass 2: edges -------------------------------------------------------
-    for file_id, module_qual, rel_dir, ex in extractions:
+    for file_id, module_qual, rel_dir, language, ex in extractions:
         for ref in ex.refs:
             src_qual = f"{module_qual}.{ref.scope}" if ref.scope else module_qual
             src_id = by_qualname.get(src_qual)
             dst_id = None
+            edge_kind = ref.kind
             if ref.kind == "imports" and ref.target_name.startswith("."):
                 # Relative ES import ("./util"): resolve against the importing
                 # file's directory, but only on an exact module-qualname hit —
@@ -121,12 +239,17 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
                 dst_id = by_qualname.get(candidate)
             if dst_id is None:
                 dst_id = resolve(module_qual, ref.scope, ref.target_name)
+            if dst_id is None and ref.kind == "imports":
+                # Internal miss: one exact shot at a declared dependency.
+                dst_id = _resolve_external(language, ref.target_name, packages)
+                if dst_id is not None:
+                    edge_kind = "imports_external"
             if src_id is None or dst_id is None or src_id == dst_id:
                 unresolved += 1
                 continue
             cur.execute(
                 "INSERT OR IGNORE INTO edges(src, dst, kind, line) VALUES (?, ?, ?, ?)",
-                (src_id, dst_id, ref.kind, ref.line),
+                (src_id, dst_id, edge_kind, ref.line),
             )
 
     commit = _git_commit(root)
@@ -142,6 +265,12 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
         "files": cur.execute("SELECT COUNT(*) FROM files").fetchone()[0],
         "symbols": cur.execute("SELECT COUNT(*) FROM symbols").fetchone()[0],
         "edges": cur.execute("SELECT COUNT(*) FROM edges").fetchone()[0],
+        "packages": cur.execute(
+            "SELECT COUNT(*) FROM symbols WHERE kind = 'package'"
+        ).fetchone()[0],
+        "imports_external": cur.execute(
+            "SELECT COUNT(*) FROM edges WHERE kind = 'imports_external'"
+        ).fetchone()[0],
         "unresolved_refs": unresolved,
     }
     conn.close()
