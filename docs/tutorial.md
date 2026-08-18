@@ -71,6 +71,11 @@ graph — every ring, LLM call, and gate decision — as a span tree, with the
 oracle scores attached to it. Without these variables Gusset behaves
 identically; scores just stay local.
 
+You can also run LLM-as-judge evals over any session from the CLI
+(`pandaprobe evals runs create --session-id ... --metrics task_completion`);
+scheduled monitors that re-run evals nightly require a paid PandaProbe
+plan — everything else in this tutorial works on the free tier.
+
 ## 6. Upgrade: self-healing
 
 ```bash
