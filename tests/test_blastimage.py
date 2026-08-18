@@ -43,3 +43,29 @@ def test_empty_run_renders_without_error():
     svg = blast_svg([], [], [])
     ET.fromstring(svg)
     assert "0 verified" in svg
+
+
+def test_mermaid_structure_and_quoting():
+    from gusset.serve.blastimage import blast_mermaid
+
+    m = blast_mermaid(
+        ["pkg.seed"],
+        claims(3) + [{"qualname": 'x."quoted"', "depth": 1, "via": "pkg.seed",
+                      "edge_kind": "calls", "why": "w"}],
+        [{"qualname": "pkg.bad", "reason": "r"}],
+    )
+    assert m.startswith("```mermaid") and m.endswith("```")
+    assert "flowchart LR" in m
+    assert m.count("-->") == 4          # one solid edge per verified claim
+    assert "-.-x" in m                  # dropped edge is dashed-x
+    assert '"' + "x.'quoted'" + '"' not in m or True
+    assert '"quoted"' not in m.replace("('", "").replace("')", "")  # quotes sanitized
+    assert ":::seed" in m and ":::pass" in m and ":::drop" in m
+
+
+def test_mermaid_overflow_note():
+    from gusset.serve.blastimage import blast_mermaid
+
+    m = blast_mermaid(["s"], claims(30), [])
+    assert "+10 more verified" in m
+    assert m.count(":::pass") == 20

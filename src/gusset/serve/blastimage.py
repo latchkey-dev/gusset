@@ -148,3 +148,48 @@ def blast_svg(seeds: list[str], verified: list[dict], dropped: list[dict]) -> st
 def _short(qualname: str, keep: int = 3) -> str:
     parts = qualname.split(".")
     return ".".join(parts[-keep:]) if len(parts) > keep else qualname
+
+
+def blast_mermaid(seeds: list[str], verified: list[dict], dropped: list[dict]) -> str:
+    """The blast radius as a Mermaid flowchart for PR comments.
+
+    Mermaid renders natively in GitHub markdown — private repos included,
+    no hosting, no lifetime tied to a branch. (Raw-URL SVG images 404 on
+    private repos: Camo fetches anonymously; and they die with the branch.)
+    """
+    shown = verified[:20]
+    overflow = len(verified) - len(shown)
+    ids: dict[str, str] = {}
+
+    def nid(qual: str) -> str:
+        if qual not in ids:
+            ids[qual] = f"n{len(ids)}"
+        return ids[qual]
+
+    def label(text: str) -> str:
+        return '"' + text.replace('"', "'") + '"'
+
+    lines = ["```mermaid", "flowchart LR"]
+    for s in seeds[:3]:
+        lines.append(f"    {nid(s)}({label('◉ ' + _short(s))}):::seed")
+    for c in shown:
+        lines.append(f"    {nid(c['qualname'])}({label(_short(c['qualname']))}):::pass")
+    for c in dropped[:4]:
+        lines.append(f"    {nid(c['qualname'])}({label('✗ ' + _short(c['qualname']))}):::drop")
+    for c in shown:
+        via = c.get("via") or (seeds[0] if seeds else "")
+        if via in ids:
+            lines.append(f"    {nid(via)} --> {nid(c['qualname'])}")
+    for c in dropped[:4]:
+        if seeds and seeds[0] in ids:
+            lines.append(f"    {nid(seeds[0])} -.-x {nid(c['qualname'])}")
+    if overflow > 0:
+        lines.append(f"    more({label(f'+{overflow} more verified')}):::note")
+    lines += [
+        "    classDef seed fill:#b4551e,stroke:#22211d,color:#fff",
+        "    classDef pass fill:#eef5ef,stroke:#2e7d4f,color:#22211d",
+        "    classDef drop fill:#fbeae9,stroke:#c23934,color:#c23934",
+        "    classDef note fill:none,stroke:none,color:#6b675c",
+        "```",
+    ]
+    return "\n".join(lines)

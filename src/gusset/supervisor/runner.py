@@ -182,67 +182,32 @@ def _execute_workflow(
 
 
 def _with_blast_image(state: dict, event: Event, session_id: str) -> str | None:
-    """Prepend the blast-radius SVG to the impact comment.
+    """Prepend the blast-radius diagram to the impact comment as Mermaid.
 
-    GitHub renders images in comments only from fetchable URLs, so the SVG
-    is committed to the PR's own branch and referenced raw. Every failure
-    mode degrades to the text-only comment — never a broken image.
+    Mermaid renders natively in GitHub comments — private repos included,
+    and it outlives the PR branch. (The first design committed an SVG to
+    the branch and hot-linked it raw: 404 on private repos because Camo
+    fetches anonymously, and dead after squash-merge deletes the branch.)
+    The SVG is still written locally for serve/artifact use. Every failure
+    mode degrades to the text-only comment.
     """
-    import subprocess
-
     try:
-        from gusset.serve.blastimage import blast_svg
+        from gusset.serve.blastimage import blast_mermaid, blast_svg
 
-        svg = blast_svg(
-            state.get("seeds") or [],
-            state.get("verified") or [],
-            state.get("dropped") or [],
-        )
+        seeds = state.get("seeds") or []
+        verified = state.get("verified") or []
+        dropped = state.get("dropped") or []
         rel = f".gusset/out/blast-{session_id}.svg"
         out_path = event.repo_root / rel
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(svg)
+        out_path.write_text(blast_svg(seeds, verified, dropped))
         if event.pr_number is None:
             return None  # local run: file written, no comment to decorate
-        import os
-
-        # In Actions, pull_request checkouts are detached HEAD — the PR's
-        # real branch is in GITHUB_HEAD_REF (live-run bug: rev-parse gave
-        # "HEAD" and the push silently failed, comment shipped imageless).
-        branch = os.environ.get("GITHUB_HEAD_REF") or subprocess.run(
-            ["git", "-C", str(event.repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=15,
-        ).stdout.strip()
-        if not branch or branch == "HEAD":
-            return None
-        ident = ["-c", "user.name=gusset[bot]",
-                 "-c", "user.email=gusset@users.noreply.github.com"]
-        # -f: .gusset/ is gitignored; the image is a deliberate exception
-        # (live-run bug: plain add staged nothing and the commit failed).
-        subprocess.run(["git", "-C", str(event.repo_root), "add", "-f", rel],
-                       check=True, capture_output=True, timeout=15)
-        subprocess.run(
-            ["git", "-C", str(event.repo_root), *ident, "commit", "-m",
-             f"gusset: blast-radius image for {session_id}"],
-            check=True, capture_output=True, timeout=15,
-        )
-        subprocess.run(
-            ["git", "-C", str(event.repo_root), "push", "origin",
-             f"HEAD:{branch}"],
-            check=True, capture_output=True, timeout=60,
-        )
-        slug = subprocess.run(
-            ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
-            capture_output=True, text=True, timeout=15, cwd=event.repo_root,
-        ).stdout.strip()
-        if not slug or not branch:
-            return None
-        url = f"https://raw.githubusercontent.com/{slug}/{branch}/{rel}"
-        return f"![blast radius]({url})\n\n{state['draft']}"
-    except Exception as exc:  # noqa: BLE001 — the image is garnish, never a failure
+        return f"{blast_mermaid(seeds, verified, dropped)}\n\n{state['draft']}"
+    except Exception as exc:  # noqa: BLE001 — the diagram is garnish, never a failure
         import sys
 
-        print(f"gusset: blast image skipped ({type(exc).__name__}: {exc})",
+        print(f"gusset: blast diagram skipped ({type(exc).__name__}: {exc})",
               file=sys.stderr)
         return None
 
