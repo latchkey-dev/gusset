@@ -27,9 +27,10 @@ Everything trust-relevant is **committed to your repo**: `gusset.toml`
 (config and human-granted ceilings), `ladder.jsonl` (every autonomy
 decision, with its reason), the drift allowlist, and replayable run event
 logs. `gusset serve` is a localhost-only canvas over that state — it
-reads, never uploads. PandaProbe (tracing, scores, evals) and the
-self-healing harness are optional layers; without credentials they
-degrade to off and everything else behaves identically.
+reads, never uploads. PandaProbe (tracing, scores, evals), the
+self-healing harness, and Latchkey runners (where the custodian's Action
+executes — recommended for its fire-on-every-event profile) are optional
+layers; without any of them everything else behaves identically.
 
 ## The impact workflow
 

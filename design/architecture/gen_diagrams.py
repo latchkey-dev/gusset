@@ -102,7 +102,7 @@ class SVG:
 
 
 def system_context() -> str:
-    s = SVG(1140, 700)
+    s = SVG(1140, 790)
     s.title(40, 46, "System context",
             "solid = deterministic spine (works with zero credentials) · dashed = optional layers")
 
@@ -151,11 +151,14 @@ def system_context() -> str:
     s.edge([(630, 398), (630, 435), (650, 435), (650, 500)], color=FAINT)
     s.pill(630, 470, "reads, never uploads", FAINT)
 
-    # observability
-    s.group(860, 490, 240, 170, "OPTIONAL")
+    # optional layers
+    s.group(860, 490, 240, 260, "OPTIONAL")
     s.node(880, 512, 200, 60, "PandaProbe", ("traces · scores · evals",),
            dash="5 4", border=FAINT, shadow=False)
     s.node(880, 585, 200, 60, "self-healing harness", ("repair agent · rules",),
+           dash="5 4", border=FAINT, shadow=False)
+    s.node(880, 658, 200, 72, "Latchkey runners",
+           ("runs-on: latchkey-small", "the Action executes here"),
            dash="5 4", border=FAINT, shadow=False)
     s.edge([(800, 192), (800, 240), (960, 240), (960, 512)], color=FAINT, dash="5 4")
     return s.render()
