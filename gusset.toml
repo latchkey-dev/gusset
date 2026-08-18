@@ -12,7 +12,7 @@ max_autonomy = "comment"
 [invariants.atlas-freshness]
 workflow = "atlas"
 trigger = "push"
-autonomy = "report"           # earns "propose" through the ladder
+autonomy = "propose"          # human-granted (was report; ceiling unchanged)
 max_autonomy = "propose"
 
 [invariants.deadcode-zero]
