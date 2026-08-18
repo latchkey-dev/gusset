@@ -158,7 +158,7 @@ def system_context() -> str:
     s.node(880, 585, 200, 60, "self-healing harness", ("repair agent · rules",),
            dash="5 4", border=FAINT, shadow=False)
     s.node(880, 658, 200, 72, "Latchkey runners",
-           ("runs-on: latchkey-small", "the Action executes here"),
+           ("the CI machines the", "custodian jobs run on"),
            dash="5 4", border=FAINT, shadow=False)
     s.edge([(800, 192), (800, 240), (960, 240), (960, 512)], color=FAINT, dash="5 4")
     return s.render()

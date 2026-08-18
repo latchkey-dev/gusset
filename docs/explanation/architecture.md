@@ -28,8 +28,10 @@ Everything trust-relevant is **committed to your repo**: `gusset.toml`
 decision, with its reason), the drift allowlist, and replayable run event
 logs. `gusset serve` is a localhost-only canvas over that state — it
 reads, never uploads. PandaProbe (tracing, scores, evals), the
-self-healing harness, and Latchkey runners (where the custodian's Action
-executes — recommended for its fire-on-every-event profile) are optional
+self-healing harness, and Latchkey runners (the CI machines the custodian's
+jobs execute on — one `runs-on:` line; recommended because the custodian
+fires on every PR, push, and cron tick, where runner boot time and
+per-minute cost dominate) are optional
 layers; without any of them everything else behaves identically.
 
 ## The impact workflow
