@@ -27,6 +27,8 @@ Condition C is derived from condition B's recorded pre-gate candidates (verified
 
 Total recorded usage: 1,452,682 input (of which 1,213,562 cache reads, 0 cache writes), 68,421 output tokens over 229 LLM calls.
 
+Note: the client did not break out cache-write tokens (reads without writes is a reporting artifact, not reality) — write tokens sit inside plain input tokens and are priced here at the base input rate instead of 1.25x, so the estimates below undercount by roughly $0.10-0.15 worst case.
+
 - standard: **$2.11**
 - intro_thru_2026-08-31: **$1.41**
 

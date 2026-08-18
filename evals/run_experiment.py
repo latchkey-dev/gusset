@@ -300,6 +300,12 @@ def _render_md(summary: dict, rows: list[dict]) -> str:
         f"{summary['usage_totals']['output_tokens']:,} output tokens over "
         f"{summary['usage_totals']['llm_calls']} LLM calls.",
         "",
+        "Note: the client did not break out cache-write tokens (reads without "
+        "writes is a reporting artifact, not reality) — write tokens sit "
+        "inside plain input tokens and are priced here at the base input "
+        "rate instead of 1.25x, so the estimates below undercount by roughly "
+        "$0.10-0.15 worst case.",
+        "",
     ]
     for sched, cost in summary["spend_usd"].items():
         lines.append(f"- {sched}: **${cost:.2f}**")
