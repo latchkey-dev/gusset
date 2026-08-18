@@ -37,12 +37,13 @@ export function createSim(nodes, links, opts = {}) {
       for (let j = i + 1; j < n; j++) {
         const b = nodes[j];
         let dx = a.x - b.x;
-        let dy = b.y === a.y && dx === 0 ? 0.01 : a.y - b.y;
+        let dy = a.y - b.y;
         if (dx === 0 && dy === 0) dx = 0.01;
-        const d2 = dx * dx + dy * dy;
+        let d2 = dx * dx + dy * dy;
         if (d2 > 90000) continue; // beyond 300px repulsion is negligible
+        if (d2 < 100) d2 = 100;   // clamp: overlapping nodes must not explode
         const f = (repulsion * alpha) / d2;
-        const d = Math.sqrt(d2);
+        const d = Math.sqrt(dx * dx + dy * dy) || 0.1;
         const fx = (dx / d) * f;
         const fy = (dy / d) * f;
         a.vx += fx; a.vy += fy;
@@ -59,12 +60,14 @@ export function createSim(nodes, links, opts = {}) {
       s.vx += fx; s.vy += fy;
       t.vx -= fx; t.vy -= fy;
     }
-    // centering + integrate
+    // centering + integrate (speed-capped so nothing gets flung off-map)
     for (const p of nodes) {
       p.vx += (cx - p.x) * centerK * alpha;
       p.vy += (cy - p.y) * centerK * alpha;
       p.vx *= damping;
       p.vy *= damping;
+      const sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+      if (sp > 24) { p.vx *= 24 / sp; p.vy *= 24 / sp; }
       p.x += p.vx;
       p.y += p.vy;
     }

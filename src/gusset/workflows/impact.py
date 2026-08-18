@@ -142,14 +142,17 @@ def build_impact_graph(
             ]
             if not seeds:
                 # Guard: halt honestly, never analyze invented symbols.
-                return {
+                update: ImpactState = {
                     "seeds": [], "frontier": [], "rings_done": 0,
                     "halt_reason": (
                         "No seed symbols found in the graph for: "
                         + ", ".join(state["seed_qualnames"])
                     ),
                 }
-            return {"seeds": seeds, "frontier": seeds, "rings_done": 0}
+            else:
+                update = {"seeds": seeds, "frontier": seeds, "rings_done": 0}
+            _fire("resolve_seeds", state, update)
+            return update
         finally:
             store.close()
 

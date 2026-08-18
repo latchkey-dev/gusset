@@ -191,16 +191,21 @@ def atlas(
     from gusset.probe.selfheal import SelfHealing
     from gusset.workflows.atlas import build_atlas_graph
 
+    from gusset.serve.events import RunLog
+
     db = _db_path(db)
     session_id = f"atlas-{uuid.uuid4().hex[:12]}"
     heal = SelfHealing.create(session_id)
+    runlog = RunLog(db.parent / "runs")
+    runlog.start(session_id, "atlas", {})
 
     async def _run() -> dict:
         heal.bind_loop(asyncio.get_running_loop())
         with SqliteSaver.from_conn_string(str(db.parent / "checkpoints.db")) as saver:
             graph = build_atlas_graph(
                 make_model(model_name), checkpointer=saver,
-                system_preamble=heal.system_preamble(), turn_hook=heal.turn_hook,
+                system_preamble=heal.system_preamble(),
+                turn_hook=runlog.turn_hook(session_id, heal.turn_hook),
             )
             config = {
                 "configurable": {"thread_id": session_id},
@@ -220,6 +225,8 @@ def atlas(
             if state.get("approved") is not False and state.get("draft"):
                 out.write_text(state["draft"] + "\n")
                 scores = score_atlas_run(state, db)
+                runlog.finish(session_id,
+                              {s.name: s.value for s in scores}, "approved")
                 typer.echo(f"wrote {out}")
                 typer.echo("scores: " + " · ".join(f"{s.name}={s.value}" for s in scores))
                 if await asyncio.to_thread(push_scores, session_id, scores):
@@ -229,9 +236,11 @@ def atlas(
 
     state = asyncio.run(_run())
     if state.get("halt_reason"):
+        runlog.finish(session_id, None, "halted")
         typer.echo(f"Halted: {state['halt_reason']}", err=True)
         raise typer.Exit(1)
     if state.get("approved") is False:
+        runlog.finish(session_id, None, "rejected")
         typer.echo("Rejected — nothing written.", err=True)
         raise typer.Exit(1)
     if (url := trace_url_hint(session_id)) is not None:
@@ -285,11 +294,17 @@ def docs_drift(
 
             model = make_model()
 
+    from gusset.serve.events import RunLog
+
     session_id = f"docsdrift-{uuid.uuid4().hex[:12]}"
+    runlog = RunLog(db.parent / "runs")
+    runlog.start(session_id, "docs-drift", {"docs": len(docs)})
 
     async def _run() -> dict:
         with SqliteSaver.from_conn_string(str(db.parent / "checkpoints.db")) as saver:
-            graph = build_docsdrift_graph(model, checkpointer=saver)
+            graph = build_docsdrift_graph(
+                model, checkpointer=saver, turn_hook=runlog.turn_hook(session_id)
+            )
             config = {
                 "configurable": {"thread_id": session_id},
                 "callbacks": make_callbacks(session_id, tags=["workflow:docs-drift"]),
@@ -309,10 +324,17 @@ def docs_drift(
 
     state = asyncio.run(_run())
     if state.get("approved") is False:
+        runlog.finish(session_id, None, "rejected")
         typer.echo("Rejected — nothing written.", err=True)
         raise typer.Exit(1)
     out.write_text(state["draft"] + "\n")
     stale = state.get("stale", [])
+    runlog.finish(
+        session_id,
+        {"claims_checked": float(len(state.get("claims", []))),
+         "stale": float(len(stale))},
+        "drift" if stale else "clean",
+    )
     typer.echo(
         f"wrote {out} — {len(state.get('claims', []))} claims checked, "
         f"{len(stale)} stale"

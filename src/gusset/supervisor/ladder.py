@@ -63,12 +63,19 @@ class Ladder:
         self.path = Path(path)
 
     def record_run(self, invariant: str, scores: dict[str, float]) -> None:
+        # Rate-style metrics are lower-is-better; normalize so min_score is
+        # meaningful. Without this, a PERFECT run (gate_drop_rate=0.0) scored
+        # min 0.0 and counted as a breach — found by the serve ladder view.
+        normalized = {
+            k: (1.0 - v if "drop_rate" in k or "hallucinated" in k else v)
+            for k, v in scores.items()
+        }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a") as f:
             f.write(json.dumps({
                 "type": "run",
                 "invariant": invariant,
-                "min_score": min(scores.values()) if scores else 0.0,
+                "min_score": min(normalized.values()) if normalized else 0.0,
                 "scores": scores,
                 "ts": datetime.now(timezone.utc).isoformat(),
             }) + "\n")

@@ -1,0 +1,168 @@
+{
+  "pages": [
+    {
+      "id": "screens",
+      "name": "The six views"
+    },
+    {
+      "id": "identity",
+      "name": "Identity & themes"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "ViewGraph.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "1 \u00b7 Graph explorer",
+      "page": "screens"
+    },
+    {
+      "file": "ViewImpact.dc.html",
+      "x": 1340,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "2 \u00b7 Impact replay",
+      "page": "screens"
+    },
+    {
+      "file": "ViewWorkflow.dc.html",
+      "x": 0,
+      "y": 880,
+      "w": 1280,
+      "h": 800,
+      "title": "3 \u00b7 Workflow live",
+      "page": "screens"
+    },
+    {
+      "file": "ViewDrift.dc.html",
+      "x": 1340,
+      "y": 880,
+      "w": 1280,
+      "h": 800,
+      "title": "4 \u00b7 Drift map",
+      "page": "screens"
+    },
+    {
+      "file": "ViewLadder.dc.html",
+      "x": 0,
+      "y": 1760,
+      "w": 1280,
+      "h": 800,
+      "title": "5 \u00b7 Ladder",
+      "page": "screens"
+    },
+    {
+      "file": "ViewSetup.dc.html",
+      "x": 1340,
+      "y": 1760,
+      "w": 1280,
+      "h": 800,
+      "title": "6 \u00b7 Setup (first run)",
+      "page": "screens"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 900,
+      "h": 640,
+      "page": "identity"
+    },
+    {
+      "file": "Identity.dc.html",
+      "x": 960,
+      "y": 0,
+      "w": 640,
+      "h": 640,
+      "page": "identity"
+    },
+    {
+      "file": "ThemePaper.dc.html",
+      "x": 0,
+      "y": 720,
+      "w": 560,
+      "h": 780,
+      "title": "Paper (light)",
+      "page": "identity"
+    },
+    {
+      "file": "ThemeChalkboard.dc.html",
+      "x": 630,
+      "y": 720,
+      "w": 560,
+      "h": 780,
+      "title": "Chalkboard (dark)",
+      "page": "identity"
+    },
+    {
+      "file": "Logos.dc.html",
+      "x": 1260,
+      "y": 720,
+      "w": 860,
+      "h": 720,
+      "title": "Logo options (decided: D)",
+      "page": "identity"
+    },
+    {
+      "file": "DirectionA.dc.html",
+      "x": 2180,
+      "y": 720,
+      "w": 560,
+      "h": 780,
+      "title": "Direction 1 (not picked)",
+      "page": "identity"
+    },
+    {
+      "file": "DirectionB.dc.html",
+      "x": 2800,
+      "y": 720,
+      "w": 560,
+      "h": 780,
+      "title": "Direction 2 (not picked)",
+      "page": "identity"
+    },
+    {
+      "file": "DirectionC.dc.html",
+      "x": 3420,
+      "y": 720,
+      "w": 560,
+      "h": 780,
+      "title": "Direction 3 (picked)",
+      "page": "identity"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "screens-note",
+      "x": 2680,
+      "y": 40,
+      "w": 260,
+      "page": "screens",
+      "text": "Round 3: all six views in Paper theme, using real data from our dogfood runs.\nChalkboard versions come from the same tokens - one board was proven on page 2.\nApprove or mark up; implementation follows approval."
+    },
+    {
+      "id": "impact-note",
+      "x": 1340,
+      "y": -70,
+      "w": 250,
+      "page": "screens",
+      "text": "Impact replay doubles as the PR-comment image: the left canvas exports as a static PNG for GitHub."
+    },
+    {
+      "id": "archive-note",
+      "x": 1260,
+      "y": 640,
+      "w": 240,
+      "page": "identity",
+      "text": "Round 1 boards kept for reference."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "screens"
+  }
+}

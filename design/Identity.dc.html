@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Spline+Sans+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #b4551e; } a:hover { color: #93441a; }
+  </style>
+</helmet>
+<div style="width: 640px; height: 640px; box-sizing: border-box; background: #f4f1ea; color: #22211d; font-family: 'Archivo', system-ui, sans-serif; padding: 32px; display: flex; flex-direction: column; gap: 18px; border-top: 4px solid #b4551e">
+  <div style="font-family: 'Spline Sans Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: #8a8577; text-transform: uppercase">identity sheet — logo D, both grounds</div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; flex: 1">
+    <div style="background: #fdfcf8; border: 1.5px solid #22211d; border-radius: 4px; box-shadow: 3px 3px 0 #d9d3c4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px">
+      <svg width="96" height="96" viewBox="0 0 104 104" fill="none">
+        <circle cx="52" cy="52" r="10" fill="#b4551e"/>
+        <circle cx="52" cy="52" r="26" stroke="#22211d" stroke-width="7"/>
+        <circle cx="52" cy="52" r="42" stroke="#8a8577" stroke-width="5" stroke-dasharray="9 10"/>
+      </svg>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <svg width="22" height="22" viewBox="0 0 104 104" fill="none">
+          <circle cx="52" cy="52" r="11" fill="#b4551e"/>
+          <circle cx="52" cy="52" r="27" stroke="#22211d" stroke-width="8"/>
+          <circle cx="52" cy="52" r="43" stroke="#8a8577" stroke-width="6" stroke-dasharray="10 11"/>
+        </svg>
+        <span style="font-size: 19px; font-weight: 800; letter-spacing: 0.01em">GUSSET</span>
+      </div>
+      <div style="font-family: 'Spline Sans Mono', monospace; font-size: 10px; color: #8a8577">on paper</div>
+    </div>
+    <div style="background: #1d1b15; border: 1.5px solid #38342a; border-radius: 4px; box-shadow: 3px 3px 0 #38342a; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px">
+      <svg width="96" height="96" viewBox="0 0 104 104" fill="none">
+        <circle cx="52" cy="52" r="10" fill="#d97a45"/>
+        <circle cx="52" cy="52" r="26" stroke="#ede8db" stroke-width="7"/>
+        <circle cx="52" cy="52" r="42" stroke="#8a8577" stroke-width="5" stroke-dasharray="9 10"/>
+      </svg>
+      <div style="display: flex; align-items: center; gap: 10px">
+        <svg width="22" height="22" viewBox="0 0 104 104" fill="none">
+          <circle cx="52" cy="52" r="11" fill="#d97a45"/>
+          <circle cx="52" cy="52" r="27" stroke="#ede8db" stroke-width="8"/>
+          <circle cx="52" cy="52" r="43" stroke="#8a8577" stroke-width="6" stroke-dasharray="10 11"/>
+        </svg>
+        <span style="font-size: 19px; font-weight: 800; letter-spacing: 0.01em; color: #ede8db">GUSSET</span>
+      </div>
+      <div style="font-family: 'Spline Sans Mono', monospace; font-size: 10px; color: #8a8577">on chalkboard</div>
+    </div>
+  </div>
+
+  <div style="background: #fdfcf8; border: 1.5px solid #22211d; border-radius: 4px; box-shadow: 3px 3px 0 #d9d3c4; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+    <div style="font-family: 'Spline Sans Mono', monospace; font-size: 10px; letter-spacing: 0.14em; color: #8a8577">TYPE RAMP</div>
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <div style="font-size: 24px; font-weight: 800">Archivo 800 — screen titles</div>
+      <div style="font-size: 15px; font-weight: 600">Archivo 600 — section heads, buttons</div>
+      <div style="font-size: 13.5px">Archivo 400 — body, explanations</div>
+      <div style="font-family: 'Spline Sans Mono', monospace; font-size: 12.5px">Spline Sans Mono — qualnames, scores, receipts, ids</div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 10px; font-size: 12px; color: #6b675c; line-height: 1.5">
+    <div style="flex:1; background:#fdfcf8; border:1.5px solid #22211d; border-radius:4px; box-shadow: 3px 3px 0 #d9d3c4; padding: 10px 12px">Mark rules: rings never recolor per theme role — seed dot is always <b>--rust</b>, mid ring <b>--ink</b>, outer ring dashed <b>#8A8577</b> (the one shared constant on both grounds).</div>
+    <div style="flex:1; background:#fdfcf8; border:1.5px solid #22211d; border-radius:4px; box-shadow: 3px 3px 0 #d9d3c4; padding: 10px 12px">Favicon: the mark alone. Wordmark always ARCHIVO 800 caps, letter-spacing +1%; never the mono font.</div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -4,6 +4,25 @@ Gusset develops Gusset. Every friction point, surprise, or win from using
 the tool on itself lands here — this file is the product backlog the tool
 earns by being used. Newest first.
 
+## 2026-08-18 (serve build)
+
+- **BUG→FIXED — perfect runs scored as breaches.** The ladder recorded raw
+  `gate_drop_rate` into min_score, so a flawless run (drop rate 0.0) read
+  as min 0.00 — three of those would DEMOTE a perfect invariant. Invisible
+  in JSONL for days; obvious the moment the serve ladder view drew the bar
+  at zero height. Rate metrics now normalize lower-is-better; ledger
+  recomputed. The visualization justified itself before it shipped.
+- **BUG→FIXED — only impact wrote run events.** Drift and atlas commands
+  never wired RunLog, so their serve views would be forever empty. Same
+  class as the earlier "harness silently degraded in CI": optional layers
+  need every entry point wired, not just the first one built.
+- **COSMETIC (logged) — workflow view narrates atlas runs in impact
+  vocabulary** ("0 seeds resolved") since turn payloads are impact-shaped.
+  Needs per-workflow feed templates; honest but clumsy.
+- **WIN — serve end to end on real data.** All six views, both themes,
+  zero console errors across 12 scenarios, against this repo's live graph
+  (726 symbols, 10 packages) and real run files.
+
 ## 2026-08-18
 
 - **BUG→FIXED — tier-scoped 529 storms defeat retries; fallback tier added.**

@@ -57,6 +57,17 @@ def bad(l: Ladder, inv: str, n: int):
         l.record_run(inv, {"closure_recall": 0.5, "summary_grounding": 0.9})
 
 
+def test_rate_scores_are_normalized_lower_is_better(ladder):
+    """gate_drop_rate=0.0 is a PERFECT score; recording it raw as min_score
+    made flawless runs count as breaches (found via the serve ladder view)."""
+    ladder.record_run("x", {"closure_recall": 1.0, "gate_drop_rate": 0.0})
+    (run,) = [e for e in ladder._entries("x") if e["type"] == "run"]
+    assert run["min_score"] == 1.0
+    ladder.record_run("x", {"closure_recall": 1.0, "gate_drop_rate": 0.9})
+    runs = [e for e in ladder._entries("x") if e["type"] == "run"]
+    assert abs(runs[-1]["min_score"] - 0.1) < 1e-9  # bad drop rate stays bad
+
+
 def test_promotion_needs_full_streak(ladder):
     good(ladder, "atlas", PROMOTE_RUNS - 1)
     d = ladder.evaluate("atlas", Level.REPORT, Level.PROPOSE)

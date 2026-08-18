@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Spline+Sans+Mono:wght@400;500&display=swap">
+  <style> body { margin: 0; } a { color: #b4551e; } a:hover { color: #93441a; } </style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: #f4f1ea; color: #22211d; font-family: 'Archivo', system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-bottom: 1.5px solid #22211d; background: #fdfcf8">
+    <svg width="22" height="22" viewBox="0 0 104 104" fill="none"><circle cx="52" cy="52" r="11" fill="#b4551e"/><circle cx="52" cy="52" r="27" stroke="#22211d" stroke-width="8"/><circle cx="52" cy="52" r="43" stroke="#8a8577" stroke-width="6" stroke-dasharray="10 11"/></svg>
+    <span style="font-size: 15px; font-weight: 800">GUSSET</span>
+    <span style="font-family: 'Spline Sans Mono', monospace; font-size: 12px; color: #8a8577">first run · setup</span>
+    <div style="margin-left: auto; font-family: 'Spline Sans Mono', monospace; font-size: 10.5px; color: #8a8577">localhost:8321 · nothing leaves this machine</div>
+  </div>
+
+  <div style="flex: 1; display: flex; align-items: center; justify-content: center; background-image: radial-gradient(#d9d3c4 1px, transparent 1px); background-size: 24px 24px">
+    <div style="width: 620px; background: #fdfcf8; border: 1.5px solid #22211d; border-radius: 4px; box-shadow: 4px 4px 0 #d9d3c4; display: flex; flex-direction: column">
+      <div style="padding: 20px 24px 14px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1.5px solid #d9d3c4">
+        <div style="font-size: 21px; font-weight: 800">Set up your custodian</div>
+        <div style="font-size: 13px; color: #6b675c">Keys are validated live and written to <span style="font-family: 'Spline Sans Mono', monospace; font-size: 12px">.env</span> in your repo — local file, never uploaded.</div>
+      </div>
+
+      <div style="padding: 18px 24px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 13px; font-weight: 600">Anthropic API key</span>
+            <span style="font-family: 'Spline Sans Mono', monospace; font-size: 9.5px; padding: 2px 7px; background: #22211d; color: #f4f1ea; border-radius: 3px">REQUIRED</span>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <div style="flex: 1; border: 1.5px solid #2e7d4f; border-radius: 3px; padding: 9px 12px; font-family: 'Spline Sans Mono', monospace; font-size: 12px; color: #6b675c; background: #f4f1ea">sk-ant-api03-••••••••••••••••••••5wAA</div>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 0 12px; border: 1.5px solid #2e7d4f; border-radius: 3px; background: #eef5ef; color: #2e7d4f; font-family: 'Spline Sans Mono', monospace; font-size: 11px">✓ valid</div>
+          </div>
+          <div style="font-size: 11px; color: #6b675c">Powers the workflows. Checked with a zero-token models call.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 13px; font-weight: 600">PandaProbe</span>
+            <span style="font-family: 'Spline Sans Mono', monospace; font-size: 9.5px; padding: 2px 7px; border: 1.5px solid #22211d; border-radius: 3px">RECOMMENDED</span>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <div style="flex: 1; border: 1.5px solid #2e7d4f; border-radius: 3px; padding: 9px 12px; font-family: 'Spline Sans Mono', monospace; font-size: 12px; color: #6b675c; background: #f4f1ea">sk_pp_••••••••••••••••••••d045e</div>
+            <div style="width: 150px; border: 1.5px solid #d9d3c4; border-radius: 3px; padding: 9px 12px; font-family: 'Spline Sans Mono', monospace; font-size: 12px">gusset</div>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 0 12px; border: 1.5px solid #2e7d4f; border-radius: 3px; background: #eef5ef; color: #2e7d4f; font-family: 'Spline Sans Mono', monospace; font-size: 11px">✓ project ok</div>
+          </div>
+          <div style="font-size: 11px; color: #6b675c">Traces, scores, self-healing. Free tier at app.pandaprobe.com — skip and everything still runs, scores stay local.</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 13px; font-weight: 600">Latchkey</span>
+            <span style="font-family: 'Spline Sans Mono', monospace; font-size: 9.5px; padding: 2px 7px; border: 1.5px solid #22211d; border-radius: 3px">RECOMMENDED</span>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <div style="flex: 1; border: 1.5px solid #c23934; border-radius: 3px; padding: 9px 12px; font-family: 'Spline Sans Mono', monospace; font-size: 12px; color: #6b675c; background: #fbeae9">lk_live_••••••••••••••••••••WutJ</div>
+            <div style="display: flex; align-items: center; gap: 6px; padding: 0 12px; border: 1.5px solid #c23934; border-radius: 3px; background: #fbeae9; color: #c23934; font-family: 'Spline Sans Mono', monospace; font-size: 11px">✗ jobs:run scope missing</div>
+          </div>
+          <div style="font-size: 11px; color: #6b675c">Runners for CI + clean-machine verification. Errors name the missing scope, never just "invalid".</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 13px; font-weight: 600">Self-healing repair model</span>
+            <span style="font-family: 'Spline Sans Mono', monospace; font-size: 9.5px; padding: 2px 7px; border: 1.5px solid #d9d3c4; color: #6b675c; border-radius: 3px">OPTIONAL</span>
+          </div>
+          <div style="display: flex; gap: 8px">
+            <div style="flex: 1; border: 1.5px solid #d9d3c4; border-radius: 3px; padding: 9px 12px; font-family: 'Spline Sans Mono', monospace; font-size: 12px">anthropic/claude-sonnet-5</div>
+            <div style="display: flex; align-items: center; padding: 0 12px; border: 1.5px solid #d9d3c4; border-radius: 3px; color: #8a8577; font-family: 'Spline Sans Mono', monospace; font-size: 11px">uses key above</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 14px 24px 20px; border-top: 1.5px solid #d9d3c4; display: flex; align-items: center; gap: 12px">
+        <div style="font-family: 'Spline Sans Mono', monospace; font-size: 10.5px; color: #6b675c">writes → <b>.env</b> (gitignored)</div>
+        <div style="margin-left: auto; display: flex; gap: 8px">
+          <div style="font-size: 12.5px; padding: 9px 16px; border: 1.5px solid #22211d; border-radius: 3px; color: #22211d">Skip for now</div>
+          <div style="font-size: 12.5px; font-weight: 600; padding: 9px 16px; background: #b4551e; color: #fdfcf8; border: 1.5px solid #22211d; border-radius: 3px; box-shadow: 2px 2px 0 #d9d3c4">Save &amp; index repo →</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
