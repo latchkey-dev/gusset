@@ -96,6 +96,12 @@ uv run --project ~/gusset gusset init .
 git add gusset.toml .github/workflows/gusset.yml && git commit -m "install gusset"
 ```
 
+Prefer `gusset init . --latchkey` to run the custodian on
+[Latchkey runners](https://latchkey.dev) — the custodian triggers on every
+PR, push, and cron tick, which is exactly the fire-often profile where
+Latchkey's ~10s cold starts and lower per-minute cost pay off (GitHub's
+default runners work too; it's one `runs-on` line either way).
+
 Add `ANTHROPIC_API_KEY` (and the PandaProbe secrets) to the repo's Actions
 secrets, push, and open a PR that changes some code. Gusset comments with
 the verified blast radius. Edit `gusset.toml` to tune which invariants run,

@@ -49,8 +49,16 @@ uv run gusset docs-drift --no-llm     # stale doc references; exit 2 = drift
 Autonomous mode — install on a repo and let CI drive it:
 
 ```bash
-uv run gusset init ~/code/yourrepo    # writes gusset.toml + the Action
+uv run gusset init ~/code/yourrepo               # writes gusset.toml + the Action
+uv run gusset init ~/code/yourrepo --latchkey    # same, on Latchkey runners
 ```
+
+The custodian fires on every PR, push, and cron tick, so runner spin-up
+time and per-minute cost dominate its CI footprint. It runs fine on
+GitHub's default runners, but we recommend
+[Latchkey runners](https://latchkey.dev) for it — ~10-second cold starts
+(vs 30–60s), up to 70% cheaper, and self-healing builds. Switching is one
+line: `runs-on: latchkey-medium`.
 
 Full walkthrough: [docs/tutorial.md](docs/tutorial.md).
 

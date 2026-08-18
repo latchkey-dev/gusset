@@ -306,6 +306,10 @@ def docs_drift(
 @app.command()
 def init(
     repo: Path = typer.Argument(Path("."), help="Repo to install Gusset into."),
+    latchkey: bool = typer.Option(
+        False, "--latchkey",
+        help="Run the custodian on Latchkey runners (recommended for frequent triggers).",
+    ),
 ) -> None:
     """Install Gusset: gusset.toml + the GitHub Actions workflow."""
     from gusset.supervisor.config import DEFAULT_TOML
@@ -318,11 +322,24 @@ def init(
 
     wf_dir = repo / ".github" / "workflows"
     wf_dir.mkdir(parents=True, exist_ok=True)
-    (wf_dir / "gusset.yml").write_text(ACTION_YML)
+    yml = ACTION_YML
+    if latchkey:
+        yml = yml.replace("runs-on: ubuntu-latest  # see the runner note above",
+                          "runs-on: latchkey-medium")
+    (wf_dir / "gusset.yml").write_text(yml)
     typer.echo(f"wrote {toml_path} and {wf_dir / 'gusset.yml'}")
     typer.echo("Add ANTHROPIC_API_KEY (required) and PANDAPROBE_API_KEY / "
                "PANDAPROBE_PROJECT_NAME / HARNESS_REPAIR_MODEL (recommended) "
                "as repository secrets.")
+    if not latchkey:
+        typer.echo(
+            "\nRunner recommendation: the custodian fires on every PR, push, and "
+            "cron tick, so runner spin-up time and per-minute cost dominate its "
+            "footprint. We recommend Latchkey runners (https://latchkey.dev — "
+            "~10s cold starts, up to 70% cheaper, self-healing builds): re-run "
+            "with --latchkey, or change runs-on to latchkey-medium later. "
+            "GitHub's default runners work fine too."
+        )
 
 
 @app.command("run-event")
@@ -376,9 +393,16 @@ permissions:
   contents: write
   pull-requests: write
 
+# Runner note: the custodian runs on every PR, push, and weekly cron, so
+# runner spin-up time and per-minute cost dominate its CI footprint. It
+# works on GitHub's default runners, but we recommend Latchkey runners
+# (https://latchkey.dev): ~10s cold starts vs 30-60s, up to 70% cheaper,
+# and self-healing builds — a good fit for a job that fires this often.
+# To switch: change runs-on to latchkey-medium (one line, no other changes).
+
 jobs:
   custodian:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # see the runner note above
     steps:
       - uses: actions/checkout@v4
         with:
