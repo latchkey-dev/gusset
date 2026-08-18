@@ -20,6 +20,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from gusset.llm import make_model
 from gusset.probe.tracing import make_callbacks, probe_enabled
 
 
@@ -158,7 +159,6 @@ def _replay_impact(case, context) -> str:
     if not db_path or not seeds:
         raise ValueError("replay case missing gusset db_path/seeds")
 
-    from langchain_anthropic import ChatAnthropic
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
@@ -168,7 +168,7 @@ def _replay_impact(case, context) -> str:
     heal = SelfHealing.create(session_id)
     with SqliteSaver.from_conn_string(":memory:") as saver:
         graph = build_impact_graph(
-            ChatAnthropic(model=os.environ.get("GUSSET_MODEL", "claude-opus-5")),
+            make_model(),
             checkpointer=saver,
             system_preamble=heal.system_preamble(),
             turn_hook=heal.turn_hook,

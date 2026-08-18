@@ -81,10 +81,10 @@ def impact(
     from dotenv import load_dotenv
 
     load_dotenv()
-    from langchain_anthropic import ChatAnthropic
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
+    from gusset.llm import make_model
     from gusset.probe import make_callbacks, trace_url_hint
     from gusset.workflows.impact import build_impact_graph
     from gusset.workflows.seeds import seeds_from_diff
@@ -113,7 +113,7 @@ def impact(
         heal.bind_loop(asyncio.get_running_loop())
         with SqliteSaver.from_conn_string(str(checkpoint_dir)) as saver:
             graph = build_impact_graph(
-                ChatAnthropic(model=model_name),
+                make_model(model_name),
                 checkpointer=saver,
                 system_preamble=heal.system_preamble(),
                 turn_hook=heal.turn_hook,
@@ -164,10 +164,10 @@ def atlas(
     from dotenv import load_dotenv
 
     load_dotenv()
-    from langchain_anthropic import ChatAnthropic
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
+    from gusset.llm import make_model
     from gusset.oracle import score_atlas_run
     from gusset.probe import make_callbacks, trace_url_hint
     from gusset.probe.scoring import push_scores
@@ -182,7 +182,7 @@ def atlas(
         heal.bind_loop(asyncio.get_running_loop())
         with SqliteSaver.from_conn_string(str(db.parent / "checkpoints.db")) as saver:
             graph = build_atlas_graph(
-                ChatAnthropic(model=model_name), checkpointer=saver,
+                make_model(model_name), checkpointer=saver,
                 system_preamble=heal.system_preamble(), turn_hook=heal.turn_hook,
             )
             config = {
@@ -261,9 +261,9 @@ def docs_drift(
         import os
 
         if os.environ.get("ANTHROPIC_API_KEY"):
-            from langchain_anthropic import ChatAnthropic
+            from gusset.llm import make_model
 
-            model = ChatAnthropic(model=os.environ.get("GUSSET_MODEL", "claude-opus-5"))
+            model = make_model()
 
     session_id = f"docsdrift-{uuid.uuid4().hex[:12]}"
 

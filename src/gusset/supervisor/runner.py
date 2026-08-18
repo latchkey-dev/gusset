@@ -193,9 +193,9 @@ def _run_graph_workflow(
 
     model = None
     if with_model:
-        from langchain_anthropic import ChatAnthropic
+        from gusset.llm import make_model
 
-        model = ChatAnthropic(model=os.environ.get("GUSSET_MODEL", "claude-opus-5"))
+        model = make_model()
 
     async def _run() -> dict:
         heal = SelfHealing.create(session_id)
@@ -224,10 +224,10 @@ def _run_impact(event: Event, db_path: Path, seeds: list[str], session_id: str) 
     import asyncio
     import os
 
-    from langchain_anthropic import ChatAnthropic
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
+    from gusset.llm import make_model
     from gusset.probe import make_callbacks
     from gusset.probe.selfheal import SelfHealing
     from gusset.workflows.impact import build_impact_graph
@@ -239,7 +239,7 @@ def _run_impact(event: Event, db_path: Path, seeds: list[str], session_id: str) 
             str(db_path.parent / "checkpoints.db")
         ) as saver:
             graph = build_impact_graph(
-                ChatAnthropic(model=os.environ.get("GUSSET_MODEL", "claude-opus-5")),
+                make_model(),
                 checkpointer=saver,
                 system_preamble=heal.system_preamble(),
                 turn_hook=heal.turn_hook,
