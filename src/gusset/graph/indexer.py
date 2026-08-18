@@ -11,6 +11,7 @@ in meta, never guessed into edges — a wrong edge would poison the oracle.
 from __future__ import annotations
 
 import hashlib
+import posixpath
 import subprocess
 from pathlib import Path
 
@@ -50,7 +51,8 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
     for table in ("edges", "symbols", "files", "meta"):
         cur.execute(f"DELETE FROM {table}")
 
-    extractions: list[tuple[int, str, Extraction]] = []  # (file_id, module_qual, ex)
+    # (file_id, module_qual, rel_dir, ex)
+    extractions: list[tuple[int, str, str, Extraction]] = []
     unresolved = 0
 
     # -- pass 1: definitions ------------------------------------------------
@@ -82,7 +84,7 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
                 (file_id, d.name, f"{module_qual}.{d.qualname}", d.kind,
                  d.start_line, d.end_line),
             )
-        extractions.append((file_id, module_qual, ex))
+        extractions.append((file_id, module_qual, rel.parent.as_posix(), ex))
 
     # -- resolution maps ----------------------------------------------------
     by_qualname: dict[str, int] = {}
@@ -104,11 +106,21 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
         return ids[0] if len(ids) == 1 else None  # unique global match only
 
     # -- pass 2: edges -------------------------------------------------------
-    for file_id, module_qual, ex in extractions:
+    for file_id, module_qual, rel_dir, ex in extractions:
         for ref in ex.refs:
             src_qual = f"{module_qual}.{ref.scope}" if ref.scope else module_qual
             src_id = by_qualname.get(src_qual)
-            dst_id = resolve(module_qual, ref.scope, ref.target_name)
+            dst_id = None
+            if ref.kind == "imports" and ref.target_name.startswith("."):
+                # Relative ES import ("./util"): resolve against the importing
+                # file's directory, but only on an exact module-qualname hit —
+                # anything fuzzier would be a guess, so it stays unresolved.
+                candidate = posixpath.normpath(
+                    posixpath.join(rel_dir, ref.target_name)
+                ).replace("/", ".")
+                dst_id = by_qualname.get(candidate)
+            if dst_id is None:
+                dst_id = resolve(module_qual, ref.scope, ref.target_name)
             if src_id is None or dst_id is None or src_id == dst_id:
                 unresolved += 1
                 continue
