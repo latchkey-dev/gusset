@@ -2,6 +2,11 @@
 
 **An autonomous repo custodian, engineered as graphs.**
 
+New here? Read [what Gusset is, plainly](docs/what-is-gusset.md) — the
+two-minute version. Using Claude Code or Cursor? Point it at the
+[gusset agent skill](skills/gusset/SKILL.md) and it will drive Gusset
+for you.
+
 Install Gusset on a repository and it keeps the expensive truths true:
 
 - **Every PR gets a verified blast-radius comment.** Not "the model thinks
