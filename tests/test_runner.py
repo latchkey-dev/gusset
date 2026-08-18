@@ -99,6 +99,9 @@ def test_workflow_crash_is_receipted_not_fatal(setup, monkeypatch):
         raise RuntimeError("Overloaded (simulated 529 storm)")
 
     monkeypatch.setattr(runner_mod, "_run_graph_workflow", boom)
+    # docs-drift guard-skips on a repo with no .md files — give it one so
+    # the event actually reaches the crashing workflow.
+    (setup["repo"] / "README.md").write_text("see `pkg.lib.helper`\n")
     receipts = handle_event(
         Event("cron", setup["repo"]), setup["config"],
         db_path=setup["db"], ladder=setup["ladder"], out_dir=setup["out"],
