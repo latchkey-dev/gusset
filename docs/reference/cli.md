@@ -85,7 +85,13 @@ Two caveats to plan around:
    The usual escalations (`pull_request_target`, a GitHub App
    installation) have real security implications and are deliberately not
    the default; adopt them only with a considered threat model.
-2. **PRs Gusset opens do not trigger your other workflows.** Events
+2. **Org policy may forbid Actions-created PRs entirely.** Many orgs
+   disable "Allow GitHub Actions to create and approve pull requests"
+   (Settings → Actions → General — org level overrides repo level). At
+   propose level Gusset then pushes the branch and receipts
+   `branch_pushed` with the reason instead of failing the run — open the
+   PR manually or enable the setting.
+3. **PRs Gusset opens do not trigger your other workflows.** Events
    caused by `github.token` never start new workflow runs (GitHub's
    anti-recursion rule), so CI will not auto-run on a Gusset-proposed PR
    (atlas refresh, dead-code removal). Re-run checks manually, close and

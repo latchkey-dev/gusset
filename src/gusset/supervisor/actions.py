@@ -75,9 +75,20 @@ def deliver(
         )
         subprocess.run(["git", "push", "-u", "origin", branch, "--force"],
                        check=True, capture_output=True, timeout=120)
-        url = _gh("pr", "create", "--base", base, "--head", branch,
-                  "--title", title or f"gusset: {invariant}",
-                  "--body-file", str(artifact_path))
+        try:
+            url = _gh("pr", "create", "--base", base, "--head", branch,
+                      "--title", title or f"gusset: {invariant}",
+                      "--body-file", str(artifact_path))
+        except RuntimeError as exc:
+            # Org policy can forbid Actions-created PRs ("GitHub Actions is
+            # not permitted to create or approve pull requests") — the work
+            # is done and pushed; deliver the branch, not a crash.
+            return ActionReceipt(
+                invariant, level, "branch_pushed",
+                f"{branch} pushed; PR creation refused ({str(exc)[:140]}). "
+                f"Open it manually or enable 'Allow GitHub Actions to create "
+                f"pull requests' in org/repo Actions settings.",
+            )
         return ActionReceipt(invariant, level, "propose", url)
 
     if level == Level.REPORT:
