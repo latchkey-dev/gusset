@@ -28,6 +28,8 @@ That's the whole trick: *the interesting claims about code are checkable,
 so Gusset checks every one.* The AI writes the explanations; the map
 decides the facts.
 
+![One map, two jobs](assets/map-oracle.svg)
+
 ## What you actually get
 
 | You do | Gusset does |

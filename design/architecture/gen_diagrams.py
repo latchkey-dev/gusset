@@ -278,10 +278,93 @@ def healing() -> str:
     return s.render()
 
 
+def readme_hero() -> str:
+    """Compact hero for the README: the whole system in one glance."""
+    s = SVG(1080, 460)
+    s.group(30, 40, 660, 390, "YOUR REPO", color=INK)
+    s.node(60, 80, 170, 74, "code + manifests", ("indexed by tree-sitter",))
+    s.node(290, 80, 160, 74, "graph.db", ("symbols · proven", "edges · packages"))
+    s.node(500, 80, 160, 74, "oracle", ("verifies every claim",),
+           border=RUST, head_color=RUST)
+    s.edge([(230, 117), (290, 117)])
+    s.edge([(450, 117), (500, 117)])
+    s.node(60, 220, 170, 74, "supervisor", ("guards · ladder",))
+    s.node(290, 220, 160, 74, "workflows", ("impact · atlas · drift",))
+    s.node(500, 220, 160, 74, "deliverables", ("PR comments · PRs",))
+    s.edge([(230, 257), (290, 257)])
+    s.edge([(450, 257), (500, 257)])
+    s.edge([(580, 154), (580, 220)], color=RUST)
+    s.pill(360, 190, "no unverified claim gets through", RUST, RUST)
+    x = 60
+    for t in ("gusset.toml", "ladder.jsonl", ".gusset/runs/"):
+        x += s.chip(x, 340, t) + 10
+    s.parts.append(
+        f'<text x="62" y="396" font-family="{MONO}" font-size="10.5" fill="{MUTED}">'
+        f'trust state, committed and auditable</text>')
+
+    s.group(730, 40, 320, 390, "OPTIONAL")
+    s.node(750, 80, 280, 66, "PandaProbe", ("traces · scores · self-healing",),
+           dash="5 4", border=FAINT, shadow=False)
+    s.node(750, 168, 280, 66, "Latchkey runners",
+           ("the CI machines the jobs run on",),
+           dash="5 4", border=FAINT, shadow=False)
+    s.node(750, 256, 280, 66, "gusset serve", ("localhost canvas over it all",),
+           dash="5 4", border=FAINT, shadow=False)
+    s.node(750, 344, 280, 66, "your AI tool", ("drives gusset via the skill",),
+           dash="5 4", border=FAINT, shadow=False)
+    return s.render()
+
+
+def stack_layers() -> str:
+    """The autonomous stack: what each optional layer removes from a human."""
+    s = SVG(1060, 560)
+    s.title(40, 46, "The autonomous stack",
+            "each layer is optional — and removes one more thing from a human's plate")
+    rows = (
+        ("1 · Gusset", "verified impact · atlas · deadcode · drift",
+         "writing the analyses and docs", INK, False),
+        ("2 · + PandaProbe", "traces · oracle scores · self-healing harness",
+         "grading the work, fixing quality stalls", FAINT, True),
+        ("3 · + Latchkey runners", "runs-on: latchkey-small · fast boots · in-run self-heal",
+         "babysitting CI for a job that fires constantly", FAINT, True),
+        ("4 · + Latchkey CLI / MCP", "latchkey run · latchkey watch · MCP tools",
+         "verifying proposals, repairing CI failures", FAINT, True),
+    )
+    y = 96
+    for head, sub, removes, border, dash in rows:
+        s.node(40, y, 560, 84, head, (sub,), border=border,
+               dash="5 4" if dash else "", shadow=not dash)
+        s.edge([(600, y + 42), (650, y + 42)], color=PASS)
+        s.pill(830, y + 42, f"human no longer: {removes}", PASS, PASS)
+        y += 104
+    s.parts.append(
+        f'<text x="40" y="{y + 18}" font-family="{MONO}" font-size="11.5" fill="{MUTED}">'
+        f'· what stays human, by design: PR review, granting ACT in gusset.toml, '
+        f'reading demotion notices</text>')
+    return s.render()
+
+
+def map_oracle() -> str:
+    """what-is-gusset: one map, two jobs."""
+    s = SVG(900, 420)
+    s.title(40, 46, "One map, two jobs",
+            "the same graph navigates the workflows and fact-checks their claims")
+    s.node(350, 100, 200, 90, "the map", ("every symbol,", "every proven edge"),
+           border=RUST, head_color=RUST)
+    s.node(60, 260, 330, 90, "navigator", ("workflows traverse real edges —", "no blind exploration"))
+    s.node(510, 260, 330, 90, "fact-checker", ("every claim must produce", "its edge — or it is dropped"))
+    s.edge([(400, 190), (280, 260)], color=RUST)
+    s.edge([(500, 190), (620, 260)], color=RUST)
+    s.pill(450, 390, "the AI writes the explanations · the map decides the facts", MUTED)
+    return s.render()
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in (("arch-system", system_context), ("arch-impact", impact_graph),
-                     ("arch-ladder", ladder), ("arch-healing", healing)):
+                     ("arch-ladder", ladder), ("arch-healing", healing),
+                     ("readme-hero", readme_hero), ("stack-layers", stack_layers),
+                     ("map-oracle", map_oracle)):
         path = OUT / f"{name}.svg"
         path.write_text(fn())
         print(f"wrote {path} ({path.stat().st_size // 1024} KB)")

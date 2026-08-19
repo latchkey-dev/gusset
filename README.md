@@ -25,17 +25,7 @@ It acts through PRs and comments you review, and its permissions are
 demoted automatically on regression. The top rung is only ever granted by
 a human.
 
-```
-┌─ your repo ──────────────────────────────────────────────────┐
-│  gusset.toml ──▶ supervisor ──guards──▶ workflows ──▶ PRs &  │
-│                     │                      │        comments │
-│  code ──▶ graph.db ─┴── oracle ◀───────────┘                 │
-│            (SQLite)     verify every claim                   │
-└──────────────┬───────────────────────────────┬───────────────┘
-               │ traces + scores               │ notices/rules
-               ▼                               ▼
-        PandaProbe (optional)          self-healing harness
-```
+![Gusset at a glance](docs/assets/readme-hero.svg)
 
 ## Quickstart
 

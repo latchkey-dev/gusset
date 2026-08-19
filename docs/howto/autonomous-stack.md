@@ -5,6 +5,8 @@ Anthropic key. Each layer below is optional and adds a specific kind of
 autonomy; the last configuration is the one we recommend when you want the
 custodian to run — and keep itself running — with minimal human attention.
 
+![The autonomous stack](../assets/stack-layers.svg)
+
 ## Layer 1: the custodian (baseline)
 
 ```bash
