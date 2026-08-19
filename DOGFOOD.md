@@ -4,6 +4,24 @@ Gusset develops Gusset. Every friction point, surprise, or win from using
 the tool on itself lands here — this file is the product backlog the tool
 earns by being used. Newest first.
 
+## 2026-08-18 (heartbeat)
+
+- **FEATURE — live CLI→browser sync (SSE heartbeat).** `/api/events`
+  streams run events; the frontend auto-navigates to the matching tab on
+  run start (with a 10s interaction-suppression window + follow toast),
+  live-updates in-flight views, and refreshes the graph on index signals
+  while preserving camera/selection. Real-test verified: `gusset impact`
+  in a shell auto-opened the impact tab in 49ms and the view grew nodes
+  live, zero reloads.
+- **BUG→FIXED — watcher blind to recreated files.** File-tail offsets
+  keyed on name+size went silent when a session file was deleted and
+  recreated at the same byte size (hit during live verification). Offsets
+  now carry the inode.
+- **SSE contract refined from use:** finish events now carry the workflow
+  name (the finish toast couldn't name the workflow without it). Known
+  remaining gap: no Last-Event-ID replay on reconnect — the poll fallback
+  covers it; candidates logged.
+
 ## 2026-08-18 (the PR-image 404 — Daniel's find)
 
 - **BUG→FIXED — comment image 404'd on the real PR.** Two-layer design

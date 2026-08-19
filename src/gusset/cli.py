@@ -49,9 +49,11 @@ def index(
 ) -> None:
     """Build the code knowledge graph for a repository."""
     from gusset.graph.indexer import index_repo
+    from gusset.serve.events import RunLog
 
     db.parent.mkdir(parents=True, exist_ok=True)
     counts = index_repo(repo, db)
+    RunLog(db.parent / "runs").signal("index", counts)  # live graph refresh
     typer.echo(json.dumps({"db": str(db), **counts}))
 
 

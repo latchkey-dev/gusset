@@ -11,16 +11,45 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from gusset.serve.api import ServeState
+from gusset.serve.heartbeat import Heartbeat
 
 STATIC_DIR = Path(__file__).parent / "static"
 _TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
           ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2"}
 
 
-def make_handler(state: ServeState):
+def make_handler(state: ServeState, heartbeat: Heartbeat | None = None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # noqa: ARG002 — quiet by default
             pass
+
+        def _sse(self) -> None:
+            """The heartbeat stream: one `data:` frame per run event, plus a
+            15s keepalive comment so proxies and the client never time out."""
+            if heartbeat is None:
+                return self._json({"error": "heartbeat disabled"}, 404)
+            q = heartbeat.subscribe()
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                self.wfile.write(b": connected\n\n")
+                self.wfile.flush()
+                import queue as _q
+
+                while True:
+                    try:
+                        event = q.get(timeout=15)
+                        payload = json.dumps(event).encode()
+                        self.wfile.write(b"data: " + payload + b"\n\n")
+                    except _q.Empty:
+                        self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # browser navigated away; EventSource reconnects if open
+            finally:
+                heartbeat.unsubscribe(q)
 
         def _json(self, payload, status: int = 200) -> None:
             body = json.dumps(payload).encode()
@@ -35,6 +64,8 @@ def make_handler(state: ServeState):
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             route = url.path
             try:
+                if route == "/api/events":
+                    return self._sse()
                 if route == "/api/meta":
                     return self._json(state.meta())
                 if route == "/api/graph":
@@ -122,5 +153,7 @@ def make_handler(state: ServeState):
 
 def serve(repo_root: Path, db_path: Path, port: int = 8321) -> ThreadingHTTPServer:
     state = ServeState(repo_root, db_path)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(state))
+    heartbeat = Heartbeat(repo_root / ".gusset" / "runs")
+    heartbeat.start()
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(state, heartbeat))
     return httpd

@@ -110,6 +110,17 @@ button {
 
 .hdr-local { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-right: 8px; }
 
+/* heartbeat indicator: green when the SSE stream is up, faint when not */
+.sync-badge {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--pass);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.sync-badge.off { color: var(--faint); }
+
 #nav { display: flex; gap: 6px; }
 
 .tab {

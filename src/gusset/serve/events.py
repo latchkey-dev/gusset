@@ -59,8 +59,19 @@ class RunLog:
     def start(self, session_id: str, workflow: str, meta: dict | None = None) -> None:
         self.append(session_id, "start", {"workflow": workflow, **(meta or {})})
 
+    def signal(self, kind: str, payload: dict | None = None) -> None:
+        """A non-run event for the live browser sync (index finished, etc.).
+
+        Written to a dedicated _signals session file so run summaries
+        never mix with heartbeat noise."""
+        self.append("_signals", kind, payload or {})
+
     def finish(self, session_id: str, scores: dict | None, outcome: str) -> None:
-        self.append(session_id, "finish", {"scores": scores, "outcome": outcome})
+        # workflow name included so the browser's finish toast can name it
+        # (SSE contract find from the live-sync verification)
+        workflow = session_id.rsplit("-", 1)[0] if "-" in session_id else session_id
+        self.append(session_id, "finish",
+                    {"scores": scores, "outcome": outcome, "workflow": workflow})
 
     # -- read side -----------------------------------------------------------
 
@@ -70,7 +81,8 @@ class RunLog:
         if not self.root.exists():
             return []
         files = sorted(
-            self.root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
+            (p for p in self.root.glob("*.jsonl") if p.stem != "_signals"),
+            key=lambda p: p.stat().st_mtime, reverse=True
         )[:limit]
         out = []
         for f in files:

@@ -22,6 +22,7 @@ export async function mountWorkflow(container, params, ctx) {
     ? params.get("id")
     : runs[0].session_id;
   const workflow = runs.find((r) => r.session_id === runId)?.workflow || "run";
+  ctx.session = runId; // the heartbeat routes this session's events to us
 
   let events = await getJSON(`/api/run?id=${encodeURIComponent(runId)}`);
 
@@ -107,7 +108,9 @@ export async function mountWorkflow(container, params, ctx) {
 
   let live = renderAll();
 
-  // -- poll while live and visible ------------------------------------------
+  // -- live refresh + poll fallback -----------------------------------------
+  // The heartbeat calls ctx.refresh the moment a turn lands; polling stays
+  // as the fallback — relaxed to 5s while SSE is connected, 2s when not.
   let timer = null;
   async function poll() {
     if (document.hidden || !live) return;
@@ -116,14 +119,19 @@ export async function mountWorkflow(container, params, ctx) {
       const fresh = await getJSON(`/api/run?id=${encodeURIComponent(runId)}&after=${after}`);
       if (fresh.length) { events = events.concat(fresh); live = renderAll(); }
     } catch { /* transient — next tick retries */ }
-    if (!live && timer) { clearInterval(timer); timer = null; }
   }
-  if (live) timer = setInterval(poll, 2000);
+  function schedule() {
+    if (!live) return;
+    timer = setTimeout(async () => { await poll(); schedule(); },
+      ctx.syncConnected?.() ? 5000 : 2000);
+  }
+  ctx.refresh = () => { poll(); };
+  schedule();
   const onVis = () => { if (!document.hidden) poll(); };
   document.addEventListener("visibilitychange", onVis);
 
   return () => {
-    if (timer) clearInterval(timer);
+    if (timer) clearTimeout(timer);
     document.removeEventListener("visibilitychange", onVis);
     ctx.setLive(false);
   };

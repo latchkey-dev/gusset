@@ -30,7 +30,7 @@ export async function mountImpact(container, params, ctx) {
     const wrap = emptyState(
       seed ? "Run impact from your terminal" : "No impact runs yet",
       seed
-        ? "serve is read-only for LLM runs — run this from your terminal, then reload to replay it claim by claim."
+        ? "serve is read-only for LLM runs — run this from your terminal and this view follows it live, claim by claim."
         : "Run an impact analysis and this view replays it — every ring, every claim, every drop.",
       cmd,
     );
@@ -44,6 +44,7 @@ export async function mountImpact(container, params, ctx) {
     : runs[0].session_id;
   const model = await getJSON(`/api/impact?id=${encodeURIComponent(runId)}`);
   ctx.setHeader(`impact · session ${runId}`);
+  ctx.session = runId; // the heartbeat routes this session's events to us
 
   const verified = model.verified || [];
   const dropped = model.dropped || [];
@@ -392,7 +393,37 @@ export async function mountImpact(container, params, ctx) {
   container.append(el("div", { class: "view3" }, stage, right));
   applyTurn(turns.length);
 
-  return () => stopPlay();
+  // -- live refresh + poll fallback -----------------------------------------
+  // The heartbeat calls ctx.refresh on this session's turn/finish events.
+  // The whole view derives from the model, so refresh = remount (coalesced —
+  // bursts of turns rebuild once). While the run is in flight a slow poll
+  // stays as fallback: 5s while SSE is connected, 2s when it is not.
+  let refreshTimer = null;
+  ctx.refresh = () => {
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => { refreshTimer = null; ctx.remount(); }, 250);
+  };
+
+  let pollTimer = null;
+  if (model.outcome === "running") {
+    const seen = turns.length + 1; // start + the turns already rendered
+    const tick = async () => {
+      try {
+        if (!document.hidden) {
+          const fresh = await getJSON(`/api/run?id=${encodeURIComponent(runId)}&after=${seen}`);
+          if (fresh.length) { ctx.refresh(); return; } // remount picks it up
+        }
+      } catch { /* transient — next tick retries */ }
+      pollTimer = setTimeout(tick, ctx.syncConnected?.() ? 5000 : 2000);
+    };
+    pollTimer = setTimeout(tick, ctx.syncConnected?.() ? 5000 : 2000);
+  }
+
+  return () => {
+    stopPlay();
+    clearTimeout(refreshTimer);
+    clearTimeout(pollTimer);
+  };
 }
 
 function shortName(qualname) {

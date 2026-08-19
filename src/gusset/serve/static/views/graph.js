@@ -13,11 +13,20 @@ const GROUPS = [
 const SIM_W = 1200;
 const SIM_H = 900;
 
+// Heartbeat refresh state: an index signal remounts this view with fresh
+// data while the camera, filters, and selection carry over. Old positions
+// seed the new sim so the re-warm settles near the old layout instead of
+// starting from scratch.
+let resumeState = null;
+
 export async function mountGraph(container, params, ctx) {
+  const resume = resumeState;
+  resumeState = null;
   let graph;
   try {
     graph = await getJSON("/api/graph");
   } catch {
+    ctx.refresh = () => ctx.remount(); // an index signal can fill this in live
     container.append(emptyState(
       "No graph yet",
       "Index the repo to build the symbol graph this view explores.",
@@ -28,6 +37,7 @@ export async function mountGraph(container, params, ctx) {
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
   if (nodes.length === 0) {
+    ctx.refresh = () => ctx.remount(); // an index signal can fill this in live
     container.append(emptyState(
       "No graph yet",
       "Index the repo to build the symbol graph this view explores.",
@@ -58,6 +68,14 @@ export async function mountGraph(container, params, ctx) {
 
   const radius = (n) => Math.max(4, Math.min(16, 4 + Math.sqrt(n.degree || 0) * 2.2));
   for (const n of nodes) n.r = radius(n); // collision radius for the sim
+
+  if (resume) {
+    // continue the previous layout: seeded nodes skip the sim's fresh start
+    for (const n of nodes) {
+      const p = resume.positions.get(n.qualname);
+      if (p) { n.x = p.x; n.y = p.y; }
+    }
+  }
 
   // Largest connected component — the default render on big graphs, so the
   // fitted view stays airy instead of a hairball of tiny fragments.
@@ -95,6 +113,13 @@ export async function mountGraph(container, params, ctx) {
   let colors = tokens();
   // default-focus the main component when the full graph would be a hairball
   let capped = nodes.length > 400 && mainSet.size < nodes.length;
+  let seedLayout = false; // resume: first sim build continues the saved layout
+  if (resume) {
+    enabled.clear();
+    for (const k of resume.enabled) enabled.add(k);
+    if (nodes.length > 400 && mainSet.size < nodes.length) capped = resume.capped;
+    seedLayout = true;
+  }
 
   const isVisible = (n) =>
     enabled.has(groupOf(n))
@@ -105,7 +130,8 @@ export async function mountGraph(container, params, ctx) {
     visNodes = nodes.filter(isVisible);
     const vis = new Set(visNodes.map((n) => n.id));
     visLinks = links.filter((l) => vis.has(l.source.id) && vis.has(l.target.id));
-    sim = createSim(visNodes, visLinks, { width: SIM_W, height: SIM_H });
+    sim = createSim(visNodes, visLinks,
+      { width: SIM_W, height: SIM_H, noWarmStart: seedLayout });
     if (reheat) sim.reheat(0.6); else sim.stop();
     updateShownFoot();
     updateCapChip();
@@ -236,6 +262,21 @@ export async function mountGraph(container, params, ctx) {
 
   container.append(el("div", { class: "view3" }, left, stage, right));
   recomputeVisible(true);
+  seedLayout = false; // later recomputes (filter toggles) warm-start as usual
+
+  // heartbeat hook: an index signal refetches the graph and re-warms the
+  // sim; camera, filters, and selection survive the remount.
+  ctx.refresh = () => {
+    resumeState = {
+      view: { ...view },
+      selectedQual: selected?.qualname ?? null,
+      enabled: [...enabled],
+      capped,
+      positions: new Map(nodes.filter((n) => n.x != null)
+        .map((n) => [n.qualname, { x: n.x, y: n.y }])),
+    };
+    ctx.remount();
+  };
 
   // -- selection -------------------------------------------------------------
   async function selectNode(n, center = false) {
@@ -549,7 +590,17 @@ export async function mountGraph(container, params, ctx) {
   resize();
   // warm the layout so the first paint is already framed, then animate on
   for (let i = 0; i < 180; i++) sim.tick();
-  fit();
+  if (resume) {
+    Object.assign(view, resume.view); // keep the saved camera — no auto-fit
+    zoomChip.textContent = `${Math.round(view.k * 100)}%`;
+    fitted = true;
+    const keep = resume.selectedQual
+      && nodes.find((n) => n.qualname === resume.selectedQual);
+    if (keep) selectNode(keep);
+    dirty = true;
+  } else {
+    fit();
+  }
   const onTheme = () => { colors = tokens(); dirty = true; };
   window.addEventListener("gusset-theme", onTheme);
   document.fonts?.ready?.then(() => { dirty = true; });
