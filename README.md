@@ -1,6 +1,13 @@
-# Gusset
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img src="docs/assets/logo.svg" alt="Gusset" width="96" height="96">
+  </picture>
+</p>
 
-**Autonomous self-healing repo upkeep.**
+<h1 align="center">Gusset</h1>
+
+<p align="center"><b>Autonomous self-healing repo upkeep.</b></p>
 
 New here? Read [what Gusset is, plainly](docs/what-is-gusset.md) — the
 two-minute version. Using Claude Code or Cursor? Point it at the

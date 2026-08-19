@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="380" height="104" viewBox="0 0 380 104">
+  <circle cx="52" cy="52" r="10" fill="#d97a45"/>
+  <circle cx="52" cy="52" r="26" fill="none" stroke="#ede8db" stroke-width="7"/>
+  <circle cx="52" cy="52" r="42" fill="none" stroke="#8a8577" stroke-width="5" stroke-dasharray="9 10"/>
+  <text x="122" y="69" font-family="Archivo, system-ui, sans-serif" font-weight="800"
+        font-size="50" letter-spacing="0.5" fill="#ede8db">GUSSET</text>
+</svg>
