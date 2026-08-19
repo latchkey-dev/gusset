@@ -23,7 +23,7 @@ product bug worth fixing.
 4. **Push and let the custodian review**: the Gusset Action comments the
    blast radius on the PR; CI runs on Latchkey runners (`latchkey-small`).
 5. **If CI fails and self-heal couldn't fix it**: the Latchkey MCP server
-   (`claude mcp list` → `latchkey`) exposes `list_failed_runs` /
+   (setup: docs/howto/autonomous-stack.md) exposes `list_failed_runs` /
    `get_failure_bundle` for triage, `dispatch_workflow` to re-fire, and
    `run_job` for ad-hoc clean-runner commands.
 
@@ -37,7 +37,8 @@ product bug worth fixing.
 - No LLM code in `oracle/` or `graph/`, ever.
 - `evals/` results are append-only history — rerun, don't rewrite.
 - Every friction point in this loop goes in `DOGFOOD.md` — it is the
-  product backlog the tool earns by being used.
+  product backlog the tool earns by being used, and it is public: write
+  entries as honestly as if a stranger will read them, because one will.
 
 ## Quick commands
 
