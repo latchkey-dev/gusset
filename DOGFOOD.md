@@ -41,6 +41,36 @@ else's.
   yourself is necessary and *not sufficient*: it validates the paths you
   already thought of.
 
+- **BUG→FIXED — CRITICAL: impact was blind to module-scope callers.**
+  `expand_ring` skipped every dependent whose kind was `module`, so
+  `gusset impact` reported **"No dependents found — the change is
+  contained to the seed symbols themselves"** for the single
+  most-depended-upon symbol in the foreign repo. Module scope is where
+  TS/JS *lives*: route registration, test bodies, config, script
+  top-level. 39 of 59 edges there originated in a module.
+
+  Worse, the reverse closure the run is *scored* against traverses
+  through module nodes, so impact was being graded on symbols it was
+  structurally forbidden from reaching. Both filters removed in one
+  commit — numerator and denominator have to move together or the ladder
+  demotes on a scoring artifact (we have shipped that bug before). The
+  same symbol now returns a correct depth-1 impact at
+  `closure_recall=1.0`, annotated "(module scope)".
+
+  Our Python fixtures never caught this because module-scope calls are
+  rare in idiomatic Python. The regression test is deliberately written
+  in TypeScript for that reason.
+
+- **BUG (open, known class) — bare cross-file calls still use a
+  unique-name fallback.** `resolve()` still resolves a bare `render()`
+  to a unique repo-wide `render` even when the caller never imports it.
+  The receiver fix closed the large hole and the audit above only
+  certifies receiver-style calls, so this class remains open and is
+  stated here rather than quietly implied away. Now that import aliases
+  are recorded, requiring an alias match for bare cross-file resolution
+  is available — with a carve-out for Go, where package scope genuinely
+  spans files.
+
 - **BUG (open, high) — the honesty fix exposed deadcode as too noisy.**
   Fewer fabricated edges means more symbols with no *resolved* caller:
   our dead list went 298 → 361, and it now includes

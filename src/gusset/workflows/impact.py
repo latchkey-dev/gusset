@@ -45,6 +45,7 @@ class Candidate(TypedDict):
     why: str            # LLM's explanation — the only model-authored field
     via: str            # qualname of the symbol this depends on (the edge dst)
     edge_kind: str
+    kind: str           # dependent's symbol kind; "module" = used at module scope
 
 
 class ImpactState(TypedDict, total=False):
@@ -169,7 +170,14 @@ def build_impact_graph(
                 if sym is None:
                     continue
                 for dep in store.dependents(sym.id):
-                    if dep.qualname in seen or dep.kind == "module":
+                    # Module-scope dependents are real and must be reported.
+                    # Dropping them made impact blind to whole languages: in
+                    # TS/JS, route registration, test bodies and config run at
+                    # module scope, and on the repo that exposed this 39 of 59
+                    # edges originated in a module. The closure this is scored
+                    # against traverses through modules, so skipping them also
+                    # hid everything reachable only behind one.
+                    if dep.qualname in seen:
                         continue
                     edges = store.edges_between(dep.id, sym.id)
                     ring.append(Candidate(
@@ -178,6 +186,7 @@ def build_impact_graph(
                         why="",
                         via=qual,
                         edge_kind=edges[0]["kind"] if edges else "unknown",
+                        kind=dep.kind,
                     ))
                     seen.add(dep.qualname)
 
@@ -193,7 +202,9 @@ def build_impact_graph(
 
             if ring:
                 listing = "\n".join(
-                    f'- {c["qualname"]} ({c["edge_kind"]} -> {c["via"]})' for c in ring
+                    f'- {c["qualname"]} ({c["edge_kind"]} -> {c["via"]})'
+                    + (" [at module scope]" if c.get("kind") == "module" else "")
+                    for c in ring
                 )
                 response = model.invoke([system, HumanMessage(
                     f"Changed dependency ring (depth {state['rings_done'] + 1}):\n{listing}"
@@ -305,8 +316,8 @@ def _render(state: ImpactState, summary: str) -> str:
     if verified:
         lines += ["## Verified impacts", ""]
         lines += [
-            f'- `{c["qualname"]}` — depth {c["depth"]}, {c["edge_kind"]} edge to '
-            f'`{c["via"]}`: {c["why"]}'
+            f'- `{c["qualname"]}`{" (module scope)" if c.get("kind") == "module" else ""}'
+            f' — depth {c["depth"]}, {c["edge_kind"]} edge to `{c["via"]}`: {c["why"]}'
             for c in sorted(verified, key=lambda c: (c["depth"], c["qualname"]))
         ]
         lines.append("")
@@ -319,7 +330,7 @@ def _render(state: ImpactState, summary: str) -> str:
         ]
     dropped = state.get("dropped", [])
     lines += [
-        f"_{len(verified)} claims verified against the code graph; "
-        f"{len(dropped)} dropped at the gate._",
+        f"_{len(verified)} claim{'' if len(verified) == 1 else 's'} verified "
+        f"against the code graph; {len(dropped)} dropped at the gate._",
     ]
     return "\n".join(lines)

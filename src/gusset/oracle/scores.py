@@ -94,10 +94,13 @@ def _closure_recall(state: dict, store: GraphStore, max_depth: int) -> Score:
     seeds = state.get("seeds", [])
     seed_ids = [s.id for q in seeds if (s := store.symbol_by_qualname(q))]
     closure = store.reverse_closure(seed_ids, max_depth=max_depth)
+    # Modules count. They are excluded from neither the closure nor the
+    # workflow's ring — numerator and denominator must move together, or the
+    # ladder records breaches that are scoring artifacts rather than misses.
     expected = {
         sym.qualname
         for sid, depth in closure.items()
-        if depth > 0 and (sym := store.symbol_by_id(sid)) and sym.kind != "module"
+        if depth > 0 and (sym := store.symbol_by_id(sid))
     }
     if not expected:
         return Score("closure_recall", 1.0, "empty closure — nothing to find")

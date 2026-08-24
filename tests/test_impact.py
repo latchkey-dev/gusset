@@ -16,6 +16,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from gusset.graph.indexer import index_repo
+from gusset.oracle.scores import score_impact_run
 from gusset.workflows.impact import build_impact_graph
 
 FIXTURE = Path(__file__).parent / "fixtures" / "pyproj"
@@ -125,3 +126,41 @@ def test_leaf_symbol_yields_contained_report(db, tmp_path):
         assert "__interrupt__" in state
         draft = state["__interrupt__"][0].value["draft"]
     assert "contained" in draft
+
+
+def test_module_scope_dependents_are_reported(tmp_path):
+    """A call at module scope is a real dependency and must be reported.
+
+    Found on a foreign TypeScript monorepo, where 39 of 59 edges originated
+    in a module: route registration, test bodies and config all run at module
+    scope. `expand_ring` used to skip `kind == "module"` dependents outright,
+    so `gusset impact` answered "No dependents found" for the single most
+    depended-upon symbol in that repo. The Python fixtures above never caught
+    it because module-scope calls are rare in idiomatic Python — a monoculture
+    blind spot, not a subtle bug.
+    """
+    db = tmp_path / "ms.db"
+    index_repo(Path(__file__).parent / "fixtures" / "modulescope", db)
+
+    model = fake_model([
+        json.dumps({"explanations": [
+            {"qualname": "main", "why": "constructs the app at module scope"},
+        ]}),
+        "Changing buildApp affects main's module-scope construction.",
+    ])
+    with SqliteSaver.from_conn_string(str(tmp_path / "ckpt.db")) as saver:
+        graph = build_impact_graph(model, checkpointer=saver)
+        state, config = run_to_interrupt(graph, db, ["helper.buildApp"])
+        final = graph.invoke(Command(resume=True), config)
+
+    verified = {c["qualname"]: c for c in final["verified"]}
+    assert "main" in verified, "module-scope caller dropped from the blast radius"
+    assert verified["main"]["kind"] == "module"
+    assert verified["main"]["edge_kind"] == "calls"
+    assert final["dropped"] == []
+    assert "(module scope)" in final["draft"]
+
+    # The score's denominator must move with the ring, or a fixed workflow
+    # reads as a regression and the ladder demotes on a scoring artifact.
+    scores = {s.name: s.value for s in score_impact_run(final, db)}
+    assert scores["closure_recall"] == 1.0, scores
