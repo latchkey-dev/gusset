@@ -561,17 +561,37 @@ async def _finish(run_coro, heal, db: Path, out: Path, session_id: str) -> dict:
 
 
 @app.command()
-def deadcode(db: Path = typer.Option(DEFAULT_DB, help="Graph database path.")) -> None:
-    """List symbols with no incoming edges — deletion candidates.
+def deadcode(
+    db: Path = typer.Option(DEFAULT_DB, help="Graph database path."),
+    unverified: bool = typer.Option(
+        False, "--unverified",
+        help="Also list symbols whose only possible references are unresolved.",
+    ),
+) -> None:
+    """List deletion candidates: symbols with no reference of any kind.
+
+    Two buckets, because they mean different things. `dead` is safe to act
+    on: nothing references the symbol and nothing failed to resolve against
+    its name. `unverified` is reported only with --unverified: the graph
+    cannot show a caller and cannot rule one out, usually dynamic dispatch
+    or a receiver whose type a parser cannot know.
 
     Pure graph query: no LLM involved, nothing to distrust.
     """
     from gusset.graph import GraphStore
 
+    def row(s) -> dict:
+        return {"qualname": s.qualname, "path": s.path,
+                "line": s.start_line, "kind": s.kind}
+
     store = GraphStore(_db_path(db))
-    dead = [
-        {"qualname": s.qualname, "path": s.path, "line": s.start_line, "kind": s.kind}
-        for s in store.dead_symbols()
-    ]
-    typer.echo(json.dumps(dead, indent=2))
-    store.close()
+    try:
+        dead = [row(s) for s in store.dead_symbols()]
+        if not unverified:
+            typer.echo(json.dumps(dead, indent=2))
+            return
+        maybe = [{**row(s), "unresolved_refs_sharing_name": hits}
+                 for s, hits in store.unverified_symbols()]
+        typer.echo(json.dumps({"dead": dead, "unverified": maybe}, indent=2))
+    finally:
+        store.close()

@@ -3,8 +3,10 @@
 Node kinds: module (one per file), class, function, method, package
 (external dependency declared in a manifest).
 Edge kinds: calls, imports, inherits, imports_external.
-Unresolved references are counted, never silently invented — the oracle
-must be able to say "this edge exists" with a straight face.
+Unresolved references are recorded in their own table, never silently
+invented — the oracle must be able to say "this edge exists" with a
+straight face, and downstream queries must be able to tell "unreferenced"
+apart from "unseen".
 """
 
 import sqlite3
@@ -48,6 +50,22 @@ CREATE TABLE IF NOT EXISTS edges (
 );
 CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src);
 CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst);
+
+-- References the resolver refused to guess at. Recording them (rather than
+-- only counting them) is what lets a query distinguish "nothing references
+-- this symbol" from "we could not see the reference" — without that, the
+-- honesty of the resolver shows up as false dead code.
+CREATE TABLE IF NOT EXISTS unresolved_refs (
+    id           INTEGER PRIMARY KEY,
+    file_id      INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    src_qualname TEXT NOT NULL,      -- the scope the reference occurs in
+    target_name  TEXT NOT NULL,      -- the bare name we could not resolve
+    receiver     TEXT,               -- NULL bare | 'self' | a name | '?'
+    kind         TEXT NOT NULL,      -- calls | imports | inherits
+    line         INTEGER NOT NULL,
+    reason       TEXT NOT NULL       -- target | scope | self_edge
+);
+CREATE INDEX IF NOT EXISTS idx_unresolved_target ON unresolved_refs(target_name);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS symbols_fts USING fts5(
     name, qualname, content='symbols', content_rowid='id'

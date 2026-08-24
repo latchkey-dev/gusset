@@ -52,3 +52,45 @@ def test_self_calls_still_resolve(tmp_path):
         assert store.edge_exists("svc.Svc.outer", "svc.Svc.inner", "calls")
     finally:
         store.close()
+
+
+def test_unresolved_refs_are_recorded_not_just_counted(tmp_path):
+    """Refusing to guess is only honest if the refusal is kept.
+
+    Counting unresolved references made the resolver's honesty read as a
+    lie downstream: a symbol reachable only through a receiver we cannot
+    type has no incoming edge, and "no incoming edge" was reported as dead
+    code. Recording each refusal lets the query separate "nothing
+    references this" from "we could not see the reference."
+    """
+    src = tmp_path / "recorded"
+    src.mkdir()
+    (src / "svc.py").write_text(
+        "class Vault:\n"
+        "    def stow(self):\n"          # only ever called via a local
+        "        return 1\n"
+        "    def orphan(self):\n"        # genuinely referenced by nothing
+        "        return 2\n"
+    )
+    (src / "use.py").write_text(
+        "def go(v):\n"
+        "    return v.stow()\n"          # receiver type unknowable
+    )
+    db = tmp_path / "rec.db"
+    counts = index_repo(src, db)
+    store = GraphStore(db)
+    try:
+        assert counts["unresolved_refs"] > 0
+        hits = store.unresolved_refs("stow")
+        assert [h["receiver"] for h in hits] == ["v"]
+        assert hits[0]["reason"] == "target"
+
+        dead = {s.qualname for s in store.dead_symbols()}
+        unverified = {s.qualname for s, _ in store.unverified_symbols()}
+        # Unknowable, so withheld from the deletion list...
+        assert "svc.Vault.stow" not in dead
+        assert "svc.Vault.stow" in unverified
+        # ...while a name nothing mentions at all stays actionable.
+        assert "svc.Vault.orphan" in dead
+    finally:
+        store.close()

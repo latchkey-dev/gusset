@@ -121,12 +121,26 @@ def _execute_workflow(
         store = GraphStore(db_path)
         try:
             dead = store.dead_symbols()
+            unverified = len(store.unverified_symbols())
         finally:
             store.close()
         if not dead:
             return None
-        body = "# Dead code\n\nSymbols with no incoming edges:\n\n" + "\n".join(
-            f"- `{s.qualname}` ({s.path}:{s.start_line})" for s in dead
+        body = (
+            "# Dead code\n\nNo reference of any kind reaches these symbols — "
+            "no edge in the graph, and nothing anywhere that failed to "
+            "resolve against their names:\n\n"
+            + "\n".join(
+                f"- `{s.qualname}` ({s.path}:{s.start_line})" for s in dead
+            )
+            + (
+                f"\n\n_{unverified} further unreferenced symbol"
+                f"{'' if unverified == 1 else 's'} withheld: the graph can "
+                f"neither show a caller nor rule one out (dynamic dispatch, "
+                f"or a receiver whose type a parser cannot know). "
+                f"`gusset deadcode --unverified` lists them._"
+                if unverified else ""
+            )
         )
         return body, {"deadcode_precision": 1.0}, []
 

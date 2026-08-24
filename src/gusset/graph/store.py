@@ -188,24 +188,80 @@ class GraphStore:
         ).fetchall()
         return {row["id"]: row["depth"] for row in rows}
 
-    def dead_symbols(self) -> list[Symbol]:
-        """Symbols with no incoming edges — candidates for deletion.
+    _UNREFERENCED = """
+        WHERE s.kind NOT IN ('module', 'package')
+          AND s.name NOT LIKE '\\_\\_%' ESCAPE '\\'
+          AND s.name != 'main'
+          AND s.id NOT IN (SELECT dst FROM edges)
+    """
 
-        Conservative exclusions: modules (files are entered externally),
-        packages (an unimported dependency is not dead code), dunder
-        methods (called by the runtime), and `main` (entry points).
+    def dead_symbols(self) -> list[Symbol]:
+        """Symbols with no incoming edge AND no unresolved reference by name.
+
+        "No incoming edges" alone is not evidence of death — it conflates
+        "nothing references this" with "the resolver refused to guess at a
+        reference." Since the resolver became receiver-aware it refuses far
+        more often, and that honesty surfaced here as false dead code: the
+        method implementing `gusset deadcode` was itself reported dead,
+        because it is only ever called as `store.dead_symbols()`.
+
+        So a symbol is dead only if nothing anywhere failed to resolve
+        against its name. Symbols excluded by that rule are not silently
+        dropped — see `unverified_symbols`. A common name shielding a truly
+        dead symbol is the correct trade: this list is used to propose
+        deletions, so a false negative costs nothing and a false positive
+        costs trust.
+
+        Conservative exclusions as before: modules (files are entered
+        externally), packages (an unimported dependency is not dead code),
+        dunder methods (called by the runtime), and `main` (entry points).
         """
         rows = self.conn.execute(
-            _SYMBOL_SELECT
-            + """
-            WHERE s.kind NOT IN ('module', 'package')
-              AND s.name NOT LIKE '\\_\\_%' ESCAPE '\\'
-              AND s.name != 'main'
-              AND s.id NOT IN (SELECT dst FROM edges)
+            _SYMBOL_SELECT + self._UNREFERENCED + """
+              AND NOT EXISTS (
+                  SELECT 1 FROM unresolved_refs u WHERE u.target_name = s.name
+              )
             ORDER BY f.path, s.start_line
             """
         ).fetchall()
         return [_symbol(r) for r in rows]
+
+    def unverified_symbols(self) -> list[tuple[Symbol, int]]:
+        """Unreferenced symbols whose name appears in an unresolved reference.
+
+        The honest middle bucket: we cannot show a caller, and we cannot
+        claim there is none. Returned with the number of unresolved
+        references sharing the name, so the noisiest cases surface first.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT s.id, f.path, s.name, s.qualname, s.kind, s.start_line,
+                   s.end_line, s.version,
+                   (SELECT COUNT(*) FROM unresolved_refs u
+                    WHERE u.target_name = s.name) AS hits
+            FROM symbols s JOIN files f ON f.id = s.file_id
+            """ + self._UNREFERENCED + """
+              AND EXISTS (
+                  SELECT 1 FROM unresolved_refs u WHERE u.target_name = s.name
+              )
+            ORDER BY hits DESC, f.path, s.start_line
+            """
+        ).fetchall()
+        return [(_symbol(r), r["hits"]) for r in rows]
+
+    def unresolved_refs(self, target_name: str) -> list[dict]:
+        """Every reference the resolver refused to guess for this name."""
+        rows = self.conn.execute(
+            """
+            SELECT u.src_qualname, u.target_name, u.receiver, u.kind,
+                   u.line, u.reason, f.path
+            FROM unresolved_refs u JOIN files f ON f.id = u.file_id
+            WHERE u.target_name = ?
+            ORDER BY f.path, u.line
+            """,
+            (target_name,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # -- external dependencies ------------------------------------------------
 

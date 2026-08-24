@@ -14,10 +14,29 @@ references that could not be resolved and were counted, never guessed.
 Graph statistics: files, symbols by kind, edges by kind, index metadata
 (root, git commit, unresolved count).
 
-## `gusset deadcode [--db PATH]`
+## `gusset deadcode [--db PATH] [--unverified]`
 
-Symbols with no incoming edges, as JSON. Pure query — no LLM, no
-credentials. Conservative exclusions: modules, dunders, `main`.
+Deletion candidates as JSON. Pure query — no LLM, no credentials.
+Conservative exclusions: modules, packages, dunders, `main`.
+
+A symbol is reported dead only when **no reference of any kind reaches
+it**: no edge in the graph, and no reference anywhere that failed to
+resolve against its name. That second condition matters because the
+resolver never guesses. A method called only as `store.flush()` produces
+no edge — the type of `store` is unknowable to a parser — and treating
+that absence as death would turn a correct refusal into a wrong answer.
+
+`--unverified` adds the middle bucket, output becoming
+`{"dead": [...], "unverified": [...]}`. Entries there are unreferenced
+symbols whose name appears in at least one unresolved reference
+(`unresolved_refs_sharing_name` counts them): the graph can neither show
+a caller nor rule one out. Expect dynamic dispatch, framework
+registration, and calls through local variables here.
+
+Matching is by bare name, so a symbol named `get` is shielded by every
+unresolved `.get()` in the repo. That is deliberate. `dead` is meant to
+be safe to act on, and in that trade a missed deletion costs nothing
+while a wrong one costs trust.
 
 ## `gusset impact [--symbol Q]... [--diff RANGE] [--db PATH] [--out FILE] [--yes] [--model M]`
 

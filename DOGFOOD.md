@@ -71,15 +71,42 @@ else's.
   is available — with a carve-out for Go, where package scope genuinely
   spans files.
 
-- **BUG (open, high) — the honesty fix exposed deadcode as too noisy.**
-  Fewer fabricated edges means more symbols with no *resolved* caller:
-  our dead list went 298 → 361, and it now includes
-  `GraphStore.dead_symbols` — the function that implements `gusset
-  deadcode` — because it is called as `store.dead_symbols()`. Unresolved
-  refs are currently *counted but not stored*, so the query cannot tell
-  "nothing references this" from "we couldn't see the reference." Fixing
-  next, by resolving receivers through local construction sites rather
-  than by suppressing the symptom.
+- **BUG→FIXED — the honesty fix made deadcode lie, so refusals are now
+  recorded.** Fewer fabricated edges means more symbols with no
+  *resolved* caller: our dead list went 298 → 361 and included
+  `GraphStore.dead_symbols` — the method that implements `gusset
+  deadcode` — because it is only ever called as `store.dead_symbols()`.
+  A correct refusal to guess had turned into a wrong answer downstream.
+
+  Root cause was bookkeeping: unresolved references were *counted*, not
+  kept, so no query could tell "nothing references this" from "we could
+  not see the reference." They now go in an `unresolved_refs` table with
+  scope, receiver, kind, line and reason, and deadcode reports two
+  buckets: `dead` (no edge **and** no unresolved reference sharing the
+  name — safe to act on) and `--unverified` (we can neither show a caller
+  nor rule one out). Ours: 361 → **246 dead, 114 unverified**, and
+  `dead_symbols` is correctly in the second bucket.
+
+  Matching is by bare name, so a symbol called `get` is shielded by every
+  unresolved `.get()` in the repo. Deliberate: this list proposes
+  deletions, and a missed deletion costs nothing while a wrong one costs
+  trust.
+
+- **FINDING CORRECTED — the tool was right and the audit was wrong.** My
+  own gauntlet notes recorded `getServiceStatus`, `setServiceStatus`,
+  `del`, `disconnect` and `createRateLimit` as live methods that deadcode
+  had falsely flagged. Grepping the source: they are never called
+  anywhere in that repo. Gusset was correct and the human-written finding
+  was not — logged here because an audit that is never itself audited is
+  just a second opinion with better formatting.
+
+- **BUG (open, high) — JSX element usage is not a reference.** The real
+  deadcode false positives on that repo are React components:
+  `ServiceCard`, `StatusBadge`, `IncidentTimeline`, and the page
+  components. `<ServiceCard ... />` is a use of the identifier and the
+  extractor does not see it, so a component used on every screen looks
+  unreferenced. Compounded by unresolved `@/components/...` tsconfig path
+  aliases, which cost the import edge too. Fixing next.
 
 ## 2026-08-18 (heartbeat)
 

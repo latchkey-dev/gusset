@@ -7,9 +7,11 @@ Pass 2: resolve references to definitions and write edges. Import refs that
 miss internally get one exact shot at a declared package (see
 _resolve_external) before counting as unresolved.
 
-Resolution is heuristic by design (no type inference — see docs): same-file
-first, then unique global name. Ambiguous or external references are counted
-in meta, never guessed into edges — a wrong edge would poison the oracle.
+Resolution is receiver-aware and deliberately incomplete (no type inference —
+see docs). Ambiguous or external references are never guessed into edges — a
+wrong edge would poison the oracle — and every refusal is written to
+`unresolved_refs`, not merely counted, so later queries can distinguish a
+symbol nothing references from one whose references we could not see.
 """
 
 from __future__ import annotations
@@ -159,7 +161,7 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
     root = Path(root).resolve()
     conn = connect(db_path)
     cur = conn.cursor()
-    for table in ("edges", "symbols", "files", "meta"):
+    for table in ("unresolved_refs", "edges", "symbols", "files", "meta"):
         cur.execute(f"DELETE FROM {table}")
 
     # (file_id, module_qual, rel_dir, language, ex)
@@ -297,6 +299,15 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
                     edge_kind = "imports_external"
             if src_id is None or dst_id is None or src_id == dst_id:
                 unresolved += 1
+                cur.execute(
+                    "INSERT INTO unresolved_refs(file_id, src_qualname, "
+                    "target_name, receiver, kind, line, reason) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (file_id, src_qual, ref.target_name,
+                     getattr(ref, "receiver", None), ref.kind, ref.line,
+                     "scope" if src_id is None
+                     else "target" if dst_id is None else "self_edge"),
+                )
                 continue
             cur.execute(
                 "INSERT OR IGNORE INTO edges(src, dst, kind, line) VALUES (?, ?, ?, ?)",

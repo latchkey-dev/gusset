@@ -86,9 +86,15 @@ def test_dead_symbols(store: GraphStore):
     assert "greeter.Unused" in dead
     assert "greeter.decorate" not in dead
     assert "app.report" not in dead
-    # Honest cost of never guessing: methods only ever called through a local
-    # variable now look dead. Documented in docs/reference/cli.md.
-    assert "greeter.Greeter.Greet" in dead
+
+    # `g.Greet()` is a call through a local variable, whose type a parser
+    # cannot know — so the resolver refuses it and the graph holds no edge.
+    # That is not evidence of death, and reporting it as dead code is how
+    # a correct refusal turns into a wrong answer. It belongs in the
+    # middle bucket, attributed to the references we could not resolve.
+    assert "greeter.Greeter.Greet" not in dead
+    unverified = {s.qualname: hits for s, hits in store.unverified_symbols()}
+    assert unverified["greeter.Greeter.Greet"] > 0
 
 
 def test_grouped_import_form():
