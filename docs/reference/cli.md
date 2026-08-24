@@ -75,9 +75,27 @@ Scores: `module_coverage`, `gate_drop_rate`, `summary_grounding`.
 Check backticked dotted symbol references in docs against the graph.
 Deterministic core; the LLM writes only an optional explanation paragraph
 (skipped with `--no-llm` or when no key is set). **Exit 2 when drift is
-found** — usable directly as a CI check. Vendor directories
-(`.venv`, `node_modules`, …) are always skipped; file-extension mentions
-(`config.toml`) are not treated as symbol claims.
+found** — usable directly as a CI check.
+
+A reference is reported stale only if it is **anchored**: some proper
+prefix of it must itself resolve. `store.GraphStore.gone` is drift
+because `store.GraphStore` exists and the method does not. `m6a.large`
+and `users.created_at` anchor on nothing — they are prose about an
+instance type and a database column, not symbols that went missing — so
+they are counted and disclosed in the report rather than reported as
+drift. Without that rule a first run on a normal repo reports 100%
+drift, which teaches the reader to ignore the tool.
+
+Resolution allows the abbreviations docs actually use: the final segment
+must match a symbol name exactly, and earlier segments must appear in
+order within its qualname, so `atlas.partition` resolves to
+`…atlas.build_atlas_graph.partition`.
+
+Vendor directories (`.venv`, `node_modules`, …) are always skipped,
+file-extension mentions (`config.toml`, `graph.db`) are not symbol
+claims, and the report file is never read back as input — it is itself
+full of backticked paths, and reading it compounded its own findings on
+every run. Curate genuine externals in `.gusset/drift-allowlist.txt`.
 
 ## `gusset init [REPO]`
 

@@ -92,6 +92,43 @@ else's.
   second walk — writing the same slow thing twice is what made it
   visible.
 
+- **BUG→FIXED — docs-drift was a 100% false-positive machine, and it fed
+  on itself.** First run on the foreign repo: *8 claims, 8 stale*. Fourth
+  run: *32 claims, 32 stale*. Two separate bugs stacked.
+
+  It read its own report back in. `docs-drift.md` is a markdown file full
+  of backticked dotted paths, matched the default `**/*.md`, and each run
+  re-harvested the previous run's findings — the growth was pure echo.
+  The output file is now excluded from its own input (and the artifacts
+  are gitignored).
+
+  The deeper bug: every backticked dotted string was treated as a claim
+  about our code. The eight "stale symbols" were `m6a.large` (an AWS
+  instance type) and things like `self_heal_attempts.run_id` (database
+  columns). Drift now requires an **anchor** — some proper prefix of the
+  path must itself resolve. `store.GraphStore.gone` is drift because
+  `store.GraphStore` exists and the method does not; `m6a.large` anchors
+  on nothing, which is not evidence a symbol went missing, it is evidence
+  the sentence was never about our code. Unanchored references are
+  counted and disclosed, never reported as stale. This is the resolver's
+  own rule applied to prose: absence of evidence is not evidence of
+  absence.
+
+  Turning it on ourselves then exposed a third bug, in the opposite
+  direction: our eval notes write `atlas.partition` for
+  `…atlas.build_atlas_graph.partition`, abbreviating an *interior* scope,
+  and contiguous-suffix matching called all three stale. Matching now
+  allows earlier segments to appear in order with the final segment
+  exact. Deliberately a **new** store method rather than loosening the
+  shared suffix matcher — that one also backs the serve lookup, and
+  relaxing a shared primitive to fix a report is how a scoring change
+  sneaks in through the side door.
+
+  **Foreign repo 32 stale → 0. This repo 7 stale → 0, 39 references
+  verified.** And a planted `store.GraphStore.completely_invented_method`
+  is still caught, which is the assertion that keeps this a check rather
+  than a mute button.
+
 - **BUG (open, known class) — bare cross-file calls still use a
   unique-name fallback.** `resolve()` still resolves a bare `render()`
   to a unique repo-wide `render` even when the caller never imports it.

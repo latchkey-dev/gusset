@@ -120,6 +120,41 @@ class GraphStore:
         ).fetchall()
         return [_symbol(r) for r in rows]
 
+    def symbols_by_dotted_path(self, path: str) -> list[Symbol]:
+        """Symbols a documentation-style dotted abbreviation could name.
+
+        Looser than `symbols_by_qualname_suffix`, which requires a
+        contiguous tail. Docs drop *interior* segments too: our own
+        architecture notes write `atlas.partition` for
+        `src.gusset.workflows.atlas.build_atlas_graph.partition`, skipping
+        the enclosing function. A contiguous-suffix match calls that stale,
+        which is wrong — the symbol is right there.
+
+        The final segment must match exactly and the earlier segments must
+        appear in order, so this is an ordered subsequence anchored at the
+        tail. `atlas.deleted_thing` still resolves to nothing, which is
+        what keeps it a drift check rather than a spell-checker.
+
+        Kept separate from the suffix matcher on purpose: that one backs
+        the serve symbol lookup, and loosening a shared primitive to fix a
+        report is how a scoring change sneaks in through the side door.
+        """
+        parts = path.split(".")
+        rows = self.conn.execute(
+            _SYMBOL_SELECT + "WHERE s.name = ? ORDER BY s.qualname",
+            (parts[-1],),
+        ).fetchall()
+        out: list[Symbol] = []
+        for row in rows:
+            qparts = row["qualname"].split(".")
+            index = 0
+            for segment in qparts:
+                if index < len(parts) and segment == parts[index]:
+                    index += 1
+            if index == len(parts):
+                out.append(_symbol(row))
+        return out
+
     def symbol_by_id(self, symbol_id: int) -> Symbol | None:
         row = self.conn.execute(
             _SYMBOL_SELECT + "WHERE s.id = ?", (symbol_id,)

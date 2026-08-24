@@ -69,6 +69,19 @@ def test_stale_and_valid_references_reported_with_lines(db, tmp_path):
         assert draft.count("| docs/arch.md |") == 1
 
 
+@pytest.fixture()
+def store_for_self(tmp_path):
+    """The real source tree: interior-scope abbreviation needs nested defs."""
+    from gusset.graph import GraphStore
+    from gusset.graph.indexer import index_repo
+
+    db_path = tmp_path / "self.db"
+    index_repo(Path(__file__).resolve().parents[1] / "src", db_path)
+    s = GraphStore(db_path)
+    yield s
+    s.close()
+
+
 def test_no_drift_runs_without_a_model(db, tmp_path):
     """model=None end to end: the conditional edge bypasses the LLM node."""
     docs = {"README.md": "`pkg.lib.helper` and `app.main` are the entry points.\n"}
@@ -76,7 +89,8 @@ def test_no_drift_runs_without_a_model(db, tmp_path):
         graph = build_docsdrift_graph(None, checkpointer=saver)
         state, config = run_to_interrupt(graph, db, docs)
         draft = state["__interrupt__"][0].value["draft"]
-        assert "All documentation references verified" in draft
+        assert "All 2 documentation reference(s)" in draft
+        assert "resolve against the code graph" in draft
         final = graph.invoke(Command(resume=True), config)
     assert final["approved"] is True
     assert final["stale"] == []
@@ -139,3 +153,48 @@ def test_turn_hook_fires_at_check_and_synthesize(db, tmp_path):
     nodes = [n for n, _ in calls]
     assert nodes == ["check_claims", "synthesize"]
     assert calls[-1][1]["draft"]  # synthesize view carries the draft
+
+
+def test_unanchored_dotted_prose_is_not_drift(db, tmp_path):
+    """`m6a.large` is an instance type, not a symbol that went missing.
+
+    A foreign repo's first run reported 8 of 8 references stale — every one
+    a database column or an AWS instance type. Reporting those as drift is
+    the same error as inventing an edge: asserting something about code on
+    evidence that says nothing about code.
+    """
+    docs = {"RUNBOOK.md": (
+        "Runs on `m6a.large`; the job writes `self_heal_attempts.run_id` "
+        "and reads `heal_reports.verdict`.\n"
+    )}
+    with SqliteSaver.from_conn_string(str(tmp_path / "ckpt.db")) as saver:
+        graph = build_docsdrift_graph(None, checkpointer=saver)
+        state, config = run_to_interrupt(graph, db, docs)
+        final = graph.invoke(Command(resume=True), config)
+    assert final["stale"] == []
+    assert len(final["unanchored"]) == 3
+    assert "not about this codebase" in final["draft"]
+
+
+def test_anchored_missing_symbol_is_still_drift(db, tmp_path):
+    """The check must stay a check: a real dangling reference is reported."""
+    docs = {"README.md": (
+        "Use `pkg.lib.helper` and then `pkg.lib.removed_helper`.\n"
+    )}
+    with SqliteSaver.from_conn_string(str(tmp_path / "ckpt.db")) as saver:
+        graph = build_docsdrift_graph(None, checkpointer=saver)
+        state, config = run_to_interrupt(graph, db, docs)
+        final = graph.invoke(Command(resume=True), config)
+    assert [c["symbol"] for c in final["stale"]] == ["pkg.lib.removed_helper"]
+    assert [c["symbol"] for c in final["valid"]] == ["pkg.lib.helper"]
+
+
+def test_interior_abbreviation_resolves(store_for_self):
+    """`atlas.partition` names build_atlas_graph.partition, skipping a scope.
+
+    Our own eval notes write it that way, and a contiguous-suffix match
+    called all three of them stale.
+    """
+    hits = store_for_self.symbols_by_dotted_path("atlas.partition")
+    assert any(s.qualname.endswith("build_atlas_graph.partition") for s in hits)
+    assert store_for_self.symbols_by_dotted_path("atlas.never_existed") == []

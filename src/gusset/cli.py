@@ -278,10 +278,17 @@ def docs_drift(
     from gusset.graph.indexer import SKIP_DIRS
 
     skip = SKIP_DIRS | {".gusset"}
+    # Never read our own report back in. It is a markdown file full of
+    # backticked dotted paths, so each run harvested the previous run's
+    # findings and re-reported them: 8 stale became 32 in four runs, all
+    # of it echo.
+    report = (out if out.is_absolute() else (repo / out)).resolve()
     docs = {
         str(p.relative_to(repo)): p.read_text()
         for p in sorted(repo.glob(docs_glob))
-        if p.is_file() and not (skip & set(p.relative_to(repo).parts))
+        if p.is_file()
+        and not (skip & set(p.relative_to(repo).parts))
+        and p.resolve() != report
     }
     if not docs:
         typer.echo("No docs matched.", err=True)

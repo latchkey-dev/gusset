@@ -17,11 +17,16 @@ drift exists, so with model=None the workflow runs whole on drift-free docs
 (the conditional edge bypasses the LLM node entirely; with drift and no
 model, explain degrades to a deterministic sentence).
 
-Reference resolution: a claimed path counts as present if it matches a
-qualname exactly OR is a dotted suffix of one (`lib.helper` resolves to
-pkg.lib.helper) — GraphStore.symbols_by_qualname_suffix. This is looser on
-purpose than the atlas gate's qualname-or-bare-name rule: docs routinely
-abbreviate leading packages, while atlas prompts hand the model full paths.
+Reference resolution: a claimed path is present if its last segment matches
+a symbol name and its earlier segments appear in order within that symbol's
+qualname (GraphStore.symbols_by_dotted_path) — docs abbreviate both leading
+packages and interior scopes. Looser on purpose than the atlas gate, whose
+prompts hand the model full paths.
+
+Drift additionally requires an ANCHOR: some proper prefix of the path must
+itself resolve. A dotted string nothing in the graph corroborates is prose
+about something else (`m6a.large`, `users.created_at`), and calling it a
+missing symbol is a guess — the same rule the resolver follows.
 """
 
 from __future__ import annotations
@@ -42,8 +47,23 @@ _FILE_EXTENSIONS = {
     "css", "cfg", "csv", "go", "html", "ini", "js", "json", "jsonl", "jsx",
     "lock", "md", "png", "py", "rst", "sh", "sql", "svg", "toml", "ts",
     "tsx", "txt", "yaml", "yml",
+    # `.gusset/graph.db`, `.env.local`: paths, not symbols.
+    "db", "env", "log", "sqlite", "xml",
 }
 from gusset.workflows.impact import _content_text
+
+
+def _anchored(store: GraphStore, symbol: str) -> bool:
+    """Does any proper prefix of this dotted path resolve in the graph?
+
+    Longest prefix first: the closer the anchor, the more likely the path
+    really is a reference to our code that has since moved.
+    """
+    parts = symbol.split(".")
+    for cut in range(len(parts) - 1, 0, -1):
+        if store.symbols_by_dotted_path(".".join(parts[:cut])):
+            return True
+    return False
 
 
 class Claim(TypedDict):
@@ -60,6 +80,7 @@ class DocsDriftState(TypedDict, total=False):
     claims: list[Claim]
     valid: list[Claim]
     stale: list[Claim]
+    unanchored: list[Claim]   # nothing about them resolves: not our claims
     # output
     explanation: str            # the only model-authored field
     draft: str
@@ -136,14 +157,38 @@ def build_docsdrift_graph(
         return {"claims": claims}
 
     def check_claims(state: DocsDriftState) -> DocsDriftState:
-        """Deterministic drift check: each claimed path resolves or it doesn't."""
+        """Deterministic drift check, but only where a check is possible.
+
+        A backticked dotted path is not automatically a claim about this
+        codebase. Real repos are full of `table.column`, `m6a.large`,
+        `compilerOptions.paths` — prose about databases, instance types and
+        other tools. Treating every one as a missing symbol is how a first
+        run reports 100% drift and teaches the reader to ignore the tool.
+
+        So drift requires an anchor: some proper prefix of the path must
+        resolve. `store.GraphStore.gone` is drift because
+        `store.GraphStore` exists and the method does not. `m6a.large`
+        anchors on nothing, which is not evidence that a symbol went
+        missing — it is evidence the sentence was never about our code.
+        Unanchored references are counted and disclosed, never reported as
+        stale, which is the same rule the rest of the graph follows: absence
+        of evidence is not evidence of absence.
+        """
         store = GraphStore(state["db_path"])
         try:
             valid: list[Claim] = []
             stale: list[Claim] = []
+            unanchored: list[Claim] = []
             for c in state["claims"]:
-                (valid if store.symbols_by_qualname_suffix(c["symbol"]) else stale).append(c)
-            update: DocsDriftState = {"valid": valid, "stale": stale}
+                if store.symbols_by_dotted_path(c["symbol"]):
+                    valid.append(c)
+                elif _anchored(store, c["symbol"]):
+                    stale.append(c)
+                else:
+                    unanchored.append(c)
+            update: DocsDriftState = {
+                "valid": valid, "stale": stale, "unanchored": unanchored,
+            }
             _fire("check_claims", state, update)
             return update
         finally:
@@ -218,12 +263,15 @@ def _render(state: DocsDriftState) -> str:
     claims = state.get("claims", [])
     valid = state.get("valid", [])
     stale = state.get("stale", [])
+    unanchored = state.get("unanchored", [])
     lines = [
         "# Docs drift report",
         "",
-        f"_{len(claims)} symbol reference(s) checked across "
+        f"_{len(claims)} dotted reference(s) found across "
         f"{len(state.get('docs', {}))} doc(s); {len(valid)} resolve in the "
-        f"code graph, {len(stale)} stale._",
+        f"code graph, {len(stale)} stale"
+        + (f", {len(unanchored)} not about this codebase._"
+           if unanchored else "._"),
         "",
     ]
     if state.get("explanation"):
@@ -240,6 +288,19 @@ def _render(state: DocsDriftState) -> str:
             ],
             "",
         ]
-    else:
-        lines += ["All documentation references verified against the code graph.", ""]
+    elif valid:
+        lines += [
+            f"All {len(valid)} documentation reference(s) that name symbols in "
+            "this repo resolve against the code graph.",
+            "",
+        ]
+    if unanchored:
+        lines += [
+            f"_{len(unanchored)} further dotted reference(s) were not checked: "
+            "no prefix of them resolves in the graph, so they are prose about "
+            "something else (a database column, an instance type, another "
+            "tool's config) rather than claims about this code. Listing them "
+            "as drift would be a guess._",
+            "",
+        ]
     return "\n".join(lines)
