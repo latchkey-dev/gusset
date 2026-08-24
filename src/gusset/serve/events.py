@@ -16,6 +16,16 @@ import time
 from pathlib import Path
 
 
+def runs_dir(db_path: Path) -> Path:
+    """Where run events live for a given graph DB: beside it.
+
+    One definition, because the writers and the readers disagreeing about
+    this made the serve dashboard silently empty for any non-default
+    `--db` path.
+    """
+    return Path(db_path).parent / "runs"
+
+
 class RunLog:
     def __init__(self, root: str | Path = ".gusset/runs"):
         self.root = Path(root)
@@ -49,6 +59,12 @@ class RunLog:
                 "dropped": state.get("dropped"),
                 "stale": state.get("stale"),
                 "claims": _count(state.get("claims")),
+                # Counts, not lists: the drift view needs all three buckets
+                # to report honestly, and deriving "resolved" as
+                # claims - stale silently counted every deliberately
+                # unchecked reference as verified.
+                "valid": _count(state.get("valid")),
+                "unanchored": _count(state.get("unanchored")),
                 "has_draft": bool(state.get("draft")),
             })
             if inner_hook is not None:

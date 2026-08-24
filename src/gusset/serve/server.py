@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from gusset.serve.api import ServeState
+from gusset.serve.events import runs_dir
 from gusset.serve.heartbeat import Heartbeat
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -153,7 +154,7 @@ def make_handler(state: ServeState, heartbeat: Heartbeat | None = None):
 
 def serve(repo_root: Path, db_path: Path, port: int = 8321) -> ThreadingHTTPServer:
     state = ServeState(repo_root, db_path)
-    heartbeat = Heartbeat(repo_root / ".gusset" / "runs")
+    heartbeat = Heartbeat(runs_dir(db_path))
     heartbeat.start()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(state, heartbeat))
     return httpd

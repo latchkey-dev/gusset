@@ -55,6 +55,52 @@ scale itself broke two things a small repo could not.
   principled on a small repo turned out to be doing its work by
   coincidence at that size.
 
+- **BUG→FIXED — the dashboard was silently blind to its own run logs.**
+  Every CLI workflow writes run events to `db.parent / "runs"`. `serve`
+  read them from `repo_root/.gusset/runs`. Those agree only for the
+  default `.gusset/graph.db`, so the moment you point `--db` outside the
+  tree — analysing a repo you do not want to write into, which is
+  precisely this exercise — the runs, ladder and drift views were
+  **permanently empty while the graph view worked**, with nothing to
+  indicate why. The heartbeat had it too, so live CLI→browser sync was
+  tailing a directory nothing wrote to. One `runs_dir()` definition now,
+  used by both sides.
+
+  Two things stand out. Every existing test passed before and after,
+  because they all used the default layout. And this is the *feature we
+  built for exactly this situation* — a foreign repo — failing on its
+  first real use of it.
+
+- **BUG→FIXED — the drift view counted unchecked references as verified.**
+  Yesterday's third bucket (`unanchored`) never reached the frontend, and
+  the view derived "resolves" as `checked - stale`. On latchkey that
+  rendered **"195 resolve · 6 stale"** when only **3** actually resolved
+  and 192 were deliberately not checked. The dashboard was making exactly
+  the claim the anchor rule exists to avoid. All three buckets are now
+  logged and rendered: *3 resolve · 6 stale · 192 not about this code*.
+
+  Adding an honest distinction in the backend and not carrying it to the
+  UI produced a *less* honest product than before the distinction
+  existed.
+
+- **CONFIRMED STILL OPEN — the workflow view speaks impact for every
+  workflow.** A docs-drift run renders `expand_ring ✓ 0 turns` and
+  `verify_gate 0 verified` because the node graph is impact-shaped. Known
+  and logged since the serve build; this run confirms it survives.
+
+- **OPEN — the graph explorer does not degrade to production scale.** At
+  6,419 symbols the force layout is a hairball: 1,570 nodes and 2,921
+  edges of undifferentiated circles. It was tuned on a ~900-symbol repo,
+  where it looks good. Needs clustering or progressive disclosure before
+  anyone points it at a real monorepo.
+
+- **OPEN — the impact ring collapses at high fan-out.** Seeding on a
+  symbol with 277 dependents puts the full 40-item fan-out cap on ring 1,
+  which renders as a solid arc of overlapping nodes. Honest — the cap is
+  doing its job — but unreadable, and `closure_recall` was 0.40 because
+  the caps genuinely cannot cover that closure, which would read to the
+  ladder as a breach.
+
 - **LIMITATION (open) — Go types look dead.** Of the 352 remaining, a
   large share are Go structs and interfaces (`Reservation`,
   `ReservationStore`, `reserveCacheRequest`) used as `var x T` or `T{}`.

@@ -38,7 +38,11 @@ export async function mountDrift(container, params, ctx) {
 
   const stale = data.stale || [];
   const checked = data.claims_checked ?? null;
-  const resolves = checked != null ? Math.max(0, checked - stale.length) : null;
+  // Never derive this as checked - stale: that counts every reference we
+  // deliberately did NOT check as a verified one. The backend reports the
+  // three buckets separately for exactly this reason.
+  const resolves = data.valid_count ?? null;
+  const unanchored = data.unanchored_count ?? 0;
 
   ctx.setHeader(`drift${checked != null ? ` · ${checked} references checked` : ""} · session ${data.session_id}`);
 
@@ -136,6 +140,14 @@ export async function mountDrift(container, params, ctx) {
       ? el("span", {}, el("span", { style: { color: "var(--pass)" } }, String(resolves)), " resolve")
       : null,
     el("span", {}, staleNum, " stale"),
+    unanchored
+      ? el("span", { title: "No prefix of these resolves in the graph, so they "
+                          + "are prose about something else — a database column, "
+                          + "an instance type, another tool's config. Reporting "
+                          + "them as drift would be a guess." },
+          el("span", { style: { color: "var(--faint)" } }, String(unanchored)),
+          " not about this code")
+      : null,
     el("span", { style: { color: "var(--faint)" } }, "docs → symbols"));
 
   const stage = el("div", { class: "drift-stage dotbg" }, svgEl,

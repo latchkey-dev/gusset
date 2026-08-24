@@ -213,3 +213,89 @@ def test_cli_impact_writes_runlog(tmp_path):
     kinds = [e["kind"] for e in log.read(session)]
     assert kinds[0] == "start" and kinds[-1] == "finish"
     assert kinds.count("turn") >= 3
+
+
+def test_runs_found_beside_a_non_default_db(tmp_path):
+    """serve must read run events from where the CLI writes them.
+
+    Every workflow writes `RunLog(db.parent / "runs")`. serve derived the
+    directory from the repo root instead, so the two agreed only for the
+    default `.gusset/graph.db`. Point `--db` outside the tree — analysing a
+    repo you do not want to write into, which is exactly what we did to a
+    foreign repo — and the runs, ladder and drift views were permanently
+    empty while the graph view worked, with nothing to say why.
+    """
+    repo = tmp_path / "repo"
+    shutil.copytree(FIXTURE, repo)
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    db = outside / "graph.db"
+    index_repo(repo, db)
+
+    # Write exactly as the CLI does.
+    RunLog(db.parent / "runs").start("impact-xyz789", "impact", {"seeds": ["a"]})
+
+    state = ServeState(repo, db)
+    sessions = [s["session_id"] for s in state.runlog.sessions()]
+    assert "impact-xyz789" in sessions, "serve looked in the wrong directory"
+    assert (outside / "runs").is_dir()
+    assert not (repo / ".gusset" / "runs").exists()
+
+
+def test_heartbeat_watches_the_same_directory(tmp_path, monkeypatch):
+    """The live CLI->browser sync must watch the directory being written.
+
+    Same root cause as above: the heartbeat is what makes a CLI run
+    auto-navigate the open dashboard, and it was tailing a directory the
+    CLI never wrote to whenever --db pointed outside the repo.
+    """
+    from gusset.serve import server as server_mod
+    from gusset.serve.events import runs_dir
+
+    seen = {}
+
+    class FakeHeartbeat:
+        def __init__(self, root):
+            seen["root"] = Path(root)
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(server_mod, "Heartbeat", FakeHeartbeat)
+
+    repo = tmp_path / "repo"
+    shutil.copytree(FIXTURE, repo)
+    db = tmp_path / "elsewhere" / "graph.db"
+    db.parent.mkdir(parents=True)
+    index_repo(repo, db)
+    httpd = make_server(repo, db, port=0)
+    try:
+        assert seen["root"] == runs_dir(db) == db.parent / "runs"
+    finally:
+        httpd.server_close()
+
+
+def test_drift_view_reports_three_buckets_separately(state: ServeState):
+    """"Resolves" must not be derived as checked - stale.
+
+    docs-drift has three outcomes: resolved, stale, and deliberately not
+    checked (no prefix anchors in the graph, so the reference is prose
+    about something else). The view derived resolves as checked - stale,
+    which counted every unchecked reference as verified: on a real repo
+    with 201 references — 3 valid, 6 stale, 192 unanchored — the dashboard
+    claimed 195 resolve.
+    """
+    session = "docsdrift-buckets"
+    state.runlog.start(session, "docs-drift", {"docs": 1})
+    hook = state.runlog.turn_hook(session)
+    hook("check_claims", {
+        "claims": [{"doc": "d.md", "line": 1, "symbol": f"s{i}"} for i in range(201)],
+        "valid": [{"doc": "d.md", "line": 1, "symbol": "real"}] * 3,
+        "stale": [{"doc": "d.md", "line": 2, "symbol": "gone"}] * 6,
+        "unanchored": [{"doc": "d.md", "line": 3, "symbol": "m6a.large"}] * 192,
+    })
+    view = state.drift(session)
+    assert view["valid_count"] == 3
+    assert view["unanchored_count"] == 192
+    assert len(view["stale"]) == 6
+    assert view["claims_checked"] == 201

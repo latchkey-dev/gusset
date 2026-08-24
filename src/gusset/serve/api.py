@@ -23,14 +23,21 @@ import urllib.request
 from pathlib import Path
 
 from gusset.graph import GraphStore
-from gusset.serve.events import RunLog
+from gusset.serve.events import RunLog, runs_dir
 
 
 class ServeState:
     def __init__(self, repo_root: Path, db_path: Path):
         self.repo_root = repo_root
         self.db_path = db_path
-        self.runlog = RunLog(repo_root / ".gusset" / "runs")
+        # Beside the DB, because that is where every CLI workflow writes it
+        # (`RunLog(db.parent / "runs")`). Deriving it from the repo root
+        # instead agreed with the writers only for the default
+        # `.gusset/graph.db`; point `--db` anywhere else — a foreign repo,
+        # or any setup that keeps the graph out of the tree — and the runs,
+        # ladder and drift views were permanently empty while the graph
+        # view worked, with nothing to indicate why.
+        self.runlog = RunLog(runs_dir(db_path))
 
     def store(self) -> GraphStore:
         return GraphStore(self.db_path)
@@ -159,10 +166,16 @@ class ServeState:
         events = self.runlog.read(session_id)
         turns = [e for e in events if e["kind"] == "turn"]
         last = turns[-1] if turns else {}
+        # Three buckets, reported separately. The UI used to derive
+        # "resolves" as checked - stale, which silently counted every
+        # unanchored reference as a verified one: on a repo with 201
+        # references, 3 valid and 192 unanchored, it claimed 195 resolve.
         return {
             "session_id": session_id,
             "stale": last.get("stale") or [],
             "claims_checked": last.get("claims"),
+            "valid_count": _as_count(last.get("valid")),
+            "unanchored_count": _as_count(last.get("unanchored")) or 0,
         }
 
     # -- drift actions -------------------------------------------------------
@@ -271,6 +284,15 @@ class ServeState:
 
 def _n(x) -> int:
     return len(x) if isinstance(x, list) else 0
+
+
+def _as_count(x) -> int | None:
+    """Turn payloads store these as counts; tolerate a raw list too."""
+    if isinstance(x, int):
+        return x
+    if isinstance(x, list):
+        return len(x)
+    return None
 
 
 def _check_http(url: str, headers: dict, ok_statuses: set | None = None) -> dict:
