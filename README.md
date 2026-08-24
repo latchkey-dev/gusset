@@ -33,8 +33,10 @@ Install Gusset on a repository and it keeps the expensive truths true:
   dependency edge that provably exists in your code graph, and claims that
   can't be verified are dropped and logged, never kept.
 - **Architecture docs never go stale.** A module map with diagrams whose
-  edges are computed from the graph itself, refreshed by PR when the
-  structure actually shifts.
+  edges are computed from the graph itself, refreshed when the structure
+  actually shifts — as a branch with a one-click link to open the PR, or
+  as the PR itself once you let Actions open them ([why the
+  difference](docs/reference/cli.md#github-access-model)).
 - **Dead code and doc drift get caught on a schedule.** Both are pure graph
   queries — no LLM required, nothing to distrust.
 

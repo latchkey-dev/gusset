@@ -126,6 +126,39 @@ scale itself broke two things a small repo could not.
   renders our output are cheap to test and expensive to guess. The
   markdown API answers this in one call.
 
+- **BUG→FIXED (Daniel's question) — we were about to fix the demo instead
+  of the product.** Propose-level delivery receipts `branch_pushed`
+  instead of opening a PR, because GitHub refuses Actions-created pull
+  requests. I had recorded that as "org policy" and recommended Daniel
+  flip the `latchkey-dev` setting. He asked whether that setting affects
+  only us or also people who fork Gusset.
+
+  It affects only us — and that is exactly why the recommendation was
+  wrong. GitHub's docs: *"By default, when you create a new repository in
+  your personal account, workflows are not allowed to create or approve
+  pull requests."* **Disabled by default, everywhere.** So this is not an
+  unusual org policy, it is the out-of-the-box experience for nearly
+  every adopter. Flipping our setting would have made our own demo look
+  right while leaving every user in the state we were trying to fix.
+
+  What the checkbox is actually protecting: it governs *create* and
+  *approve* together, and a workflow that can approve its own PR can
+  satisfy a "requires review" rule with no human in it. Off is the right
+  default and we should not be asking anyone to change it.
+
+  Fixed where it belonged. The receipt now carries a one-click compare
+  URL (`…/compare/base...branch?expand=1`), so the remaining human step is
+  a click rather than a hunt through the branch list, and it says the
+  refusal is expected rather than reading like a failure. When the repo
+  slug cannot be resolved it prints an instruction instead of a
+  guessed link — a wrong URL in a receipt is worse than no URL. The
+  README, `what-is-gusset.md` and the agent skill no longer promise that
+  proposals "arrive as PRs"; they describe the branch-plus-link default
+  and name the two ways to upgrade.
+
+  The lesson is about where a fix goes. A degraded default path that only
+  the author never sees is the easiest kind of bug to mis-site.
+
 - **CONFIRMED STILL OPEN — the workflow view speaks impact for every
   workflow.** A docs-drift run renders `expand_ring ✓ 0 turns` and
   `verify_gate 0 verified` because the node graph is impact-shaped. Known

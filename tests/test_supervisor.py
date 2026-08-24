@@ -113,3 +113,29 @@ def test_histories_are_isolated_per_invariant(ladder):
     bad(ladder, "b", DEMOTE_BREACHES)
     assert ladder.evaluate("a", Level.REPORT, Level.PROPOSE).changed
     assert ladder.evaluate("b", Level.COMMENT, Level.COMMENT).level == Level.REPORT
+
+
+def test_branch_pushed_receipt_carries_a_clickable_compare_url(monkeypatch):
+    """GitHub blocks Actions-opened PRs by default, so this IS the normal path.
+
+    The work is already pushed when PR creation is refused; the receipt has
+    to make the remaining human step one click rather than a hunt through
+    the branch list.
+    """
+    from gusset.supervisor import actions
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "acme/widgets")
+    url = actions._compare_url("gusset/atlas", "main")
+    assert url == "https://github.com/acme/widgets/compare/main...gusset/atlas?expand=1"
+
+
+def test_compare_url_says_what_to_do_when_the_repo_is_unknown(monkeypatch):
+    """A wrong URL in a receipt is worse than no URL."""
+    from gusset.supervisor import actions
+
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+    monkeypatch.setattr(actions, "_gh",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no gh")))
+    out = actions._compare_url("gusset/atlas", "main")
+    assert "http" not in out
+    assert "gusset/atlas" in out and "main" in out

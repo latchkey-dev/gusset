@@ -86,7 +86,9 @@ stale. A large `unresolved_refs` count is the same honesty, not a defect:
 triggers, at what permission level) and a GitHub Action. After the user
 adds `ANTHROPIC_API_KEY` as a repo secret: every PR gets a verified
 blast-radius comment with an image; architecture docs and dead-code
-cleanups arrive as PRs. Permission levels are EARNED via score history
+cleanups arrive as a pushed branch with a link to open the PR (GitHub
+disables Actions-opened PRs by default — say so rather than calling it a
+failure), or as the PR itself if that setting is on. Permission levels are EARNED via score history
 (report → comment → propose; `act` is human-granted only) — never edit
 `.gusset/ladder.jsonl` by hand; change ceilings in `gusset.toml`.
 

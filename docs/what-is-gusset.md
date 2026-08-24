@@ -35,7 +35,7 @@ decides the facts.
 | You do | Gusset does |
 |---|---|
 | Open a PR | Comments the verified blast radius — what your change affects, with the picture, each line carrying its proof |
-| Merge to main | Opens a PR refreshing the architecture doc when structure actually shifted |
+| Merge to main | Pushes a branch refreshing the architecture doc when structure actually shifted, with a link to open the PR (GitHub blocks Actions from opening PRs by default — see the [CLI reference](reference/cli.md#github-access-model)) |
 | Nothing (weekly cron) | Reports dead code with per-symbol proof; flags doc references that no longer resolve |
 | `gusset serve` | A local canvas: the map itself, replays of every run, and the trust ledger |
 

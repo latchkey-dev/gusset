@@ -35,6 +35,27 @@ def _gh(*args: str, input_text: str | None = None) -> str:
     return result.stdout.strip()
 
 
+def _compare_url(branch: str, base: str) -> str:
+    """The 'open a PR for this branch' URL, or a plain instruction.
+
+    `GITHUB_REPOSITORY` is set in every Actions run; locally we ask `gh`.
+    If neither answers we say what to do rather than print a broken link —
+    a wrong URL in a receipt is worse than no URL.
+    """
+    import os
+
+    slug = os.environ.get("GITHUB_REPOSITORY", "")
+    if not slug:
+        try:
+            slug = _gh("repo", "view", "--json", "nameWithOwner",
+                       "--jq", ".nameWithOwner")
+        except (RuntimeError, OSError):
+            slug = ""
+    if not slug:
+        return f"open a pull request from `{branch}` into `{base}`"
+    return f"https://github.com/{slug}/compare/{base}...{branch}?expand=1"
+
+
 def deliver(
     invariant: str,
     level: Level,
@@ -80,14 +101,19 @@ def deliver(
                       "--title", title or f"gusset: {invariant}",
                       "--body-file", str(artifact_path))
         except RuntimeError as exc:
-            # Org policy can forbid Actions-created PRs ("GitHub Actions is
-            # not permitted to create or approve pull requests") — the work
-            # is done and pushed; deliver the branch, not a crash.
+            # GitHub disables "Allow GitHub Actions to create and approve
+            # pull requests" by default, everywhere — so this is the NORMAL
+            # path on a fresh install, not an exotic org policy. The work is
+            # done and pushed either way; hand back a one-click compare URL
+            # so opening it is a click rather than a hunt through branches.
             return ActionReceipt(
                 invariant, level, "branch_pushed",
-                f"{branch} pushed; PR creation refused ({str(exc)[:140]}). "
-                f"Open it manually or enable 'Allow GitHub Actions to create "
-                f"pull requests' in org/repo Actions settings.",
+                f"{branch} pushed. Open the PR: {_compare_url(branch, base)}"
+                f"\n  (GitHub blocks Actions from opening PRs by default; "
+                f"this is expected. Enable 'Allow GitHub Actions to create "
+                f"and approve pull requests', or give the workflow a "
+                f"fine-grained PAT, to have Gusset open it for you.)"
+                f"\n  refused: {str(exc)[:120]}",
             )
         return ActionReceipt(invariant, level, "propose", url)
 

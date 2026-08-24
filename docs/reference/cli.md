@@ -139,12 +139,29 @@ Two caveats to plan around:
    The usual escalations (`pull_request_target`, a GitHub App
    installation) have real security implications and are deliberately not
    the default; adopt them only with a considered threat model.
-2. **Org policy may forbid Actions-created PRs entirely.** Many orgs
-   disable "Allow GitHub Actions to create and approve pull requests"
-   (Settings → Actions → General — org level overrides repo level). At
-   propose level Gusset then pushes the branch and receipts
-   `branch_pushed` with the reason instead of failing the run — open the
-   PR manually or enable the setting.
+2. **By default GitHub will not let Gusset open the PR — expect this.**
+   "Allow GitHub Actions to create and approve pull requests" is
+   **disabled by default** on every new repository and organization, and
+   most people never change it. So on a fresh install, `propose` level
+   pushes the branch and receipts `branch_pushed` with a one-click
+   compare URL, rather than opening the pull request itself. Nothing
+   failed; the work is done and waiting for you to click.
+
+   The checkbox governs *create* and *approve* together, and approve is
+   the reason it is off: a workflow that could approve its own pull
+   request could satisfy a "requires review" branch protection rule with
+   no human involved. Leaving it off is a sound default.
+
+   Two ways to have Gusset open PRs itself, if you want that:
+
+   - **Enable the setting** (Settings → Actions → General; the org level
+     overrides the repo level). Simple, but it grants the ability to
+     *every* workflow in that org.
+   - **Give the workflow its own token** — a fine-grained PAT or GitHub
+     App token scoped to this one repository with `contents: write` and
+     `pull_requests: write`, set as `GH_TOKEN` in
+     `.github/workflows/gusset.yml`. Narrower, and it also fixes caveat 3
+     below. Treat it as a real permissions decision either way.
 3. **PRs Gusset opens do not trigger your other workflows.** Events
    caused by `github.token` never start new workflow runs (GitHub's
    anti-recursion rule), so CI will not auto-run on a Gusset-proposed PR
