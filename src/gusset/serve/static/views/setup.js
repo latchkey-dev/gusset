@@ -121,8 +121,9 @@ export async function mountSetup(container, params, ctx) {
         " in your repo — local file, never uploaded."),
       el("div", { class: "explainer-row", style: { marginTop: "6px" } },
         explainer(
-          "Validates your keys live, then writes them to .env in this repo — nothing leaves this machine.",
-          "Every key except Anthropic is optional; skip any and the rest still works.",
+          "Paste your keys here. Each one is checked against the real service before anything is saved, so you find out now if a key is wrong.",
+          "They are written to a .env file in this repo, which is git-ignored. Nothing is uploaded, and Gusset has no server of its own.",
+          "Only the Anthropic key is required. Skip the others and everything still runs \u2014 you just don\u2019t get the extras they turn on.",
         ))),
     el("div", { class: "setup-body" },
       field("anthropic", "Anthropic API key", "REQUIRED", "filled",

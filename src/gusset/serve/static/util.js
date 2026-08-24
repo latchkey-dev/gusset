@@ -123,20 +123,39 @@ export function explainer(...sentences) {
   const btn = el("button", {
     class: "chip dim explainer-toggle", "aria-expanded": "false",
   }, "ⓘ what is this?");
-  btn.addEventListener("click", () => {
-    panel.hidden = !panel.hidden;
-    btn.setAttribute("aria-expanded", String(!panel.hidden));
-    btn.classList.toggle("dim", panel.hidden);
+  const wrap = el("div", { class: "explainer" }, btn, panel);
+
+  function setOpen(open) {
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    btn.classList.toggle("dim", !open);
+  }
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setOpen(panel.hidden);
   });
-  return el("div", { class: "explainer" }, btn, panel);
+  // The panel floats over the view it describes, so it has to be easy to
+  // get rid of: anywhere outside, or Escape.
+  document.addEventListener("click", (e) => {
+    if (!panel.hidden && !wrap.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !panel.hidden) setOpen(false);
+  });
+  return wrap;
 }
 
-export function emptyState(title, sentence, cmd) {
+export function emptyState(title, sentence, cmd, help) {
+  // `help` is the same "what is this?" panel the populated view uses. An
+  // empty screen is exactly when someone needs it most — the ladder showed
+  // nothing on a repo without gusset.toml and offered no way to find out
+  // why, which is precisely the question it got asked.
   return el("div", { class: "empty-wrap dotbg" },
     el("div", { class: "card empty" },
       el("div", { class: "title" }, title),
       el("div", { class: "sentence" }, sentence),
       cmd ? codeBox(cmd) : null,
+      help ? el("div", { class: "empty-help" }, help) : null,
     ),
   );
 }

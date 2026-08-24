@@ -5,20 +5,30 @@
 
 import { el, svg, getJSON, postJSON, emptyState, explainer, toast } from "../util.js";
 
+function driftHelp() {
+  return explainer(
+        "Your docs name bits of code. This checks whether that code still exists.",
+        "Stale means a doc points at something no longer in your codebase \u2014 usually a rename the docs missed. Those are the red ones, with the file and line to fix.",
+        "Names that were never yours \u2014 a database column, an instance type, another tool\u2019s setting \u2014 are counted separately and never called stale. Gusset has no way to know whether those are out of date, so it says so instead of guessing.",
+        "\u201Callowlist\u201D means stop reporting this name for good. That is a judgment only you can make, so it is a button rather than something Gusset decides.",
+        "In CI, this command exits non-zero when something is stale, so it can fail a build.",
+      );
+}
+
 const VB_W = 760, VB_H = 690;
 
 const STDLIB_PREFIXES = ["asyncio.", "typing.", "json.", "os.", "pathlib."];
 
 function explain(symbol) {
   if (!symbol.includes(".")) {
-    return ["GitHub concept formatted as code — allowlist candidate.", null];
+    return ["Not a name from your code \u2014 allowlist it so it stops reporting.", null];
   }
   if (STDLIB_PREFIXES.some((p) => symbol.startsWith(p))) {
-    return ["Resolves to no symbol in the graph. Likely an ", "external stdlib reference",
-      " — candidate for the allowlist, not a docs fix."];
+    return ["This looks like ", "part of the language or a library",
+      ", not your code. Allowlist it rather than editing the doc."];
   }
-  return ["Resolves to no symbol in the graph — an ", "external or renamed symbol",
-    "; check whether the doc or the code moved."];
+  return ["Your docs mention this, but ", "no such thing exists in your code",
+    ". Either it was renamed and the doc missed it, or it belongs to something else \u2014 allowlist it if so."];
 }
 
 export async function mountDrift(container, params, ctx) {
@@ -28,9 +38,10 @@ export async function mountDrift(container, params, ctx) {
 
   if (!data.session_id) {
     container.append(emptyState(
-      "No drift run yet",
-      "Check every backticked symbol path in your docs against the graph — stale references surface here.",
+      "No check has run yet",
+      "This finds places where your docs name code that no longer exists. Run it and the results show up here.",
       "gusset docs-drift",
+      driftHelp(),
     ));
     ctx.setHeader("drift · no runs yet");
     return;
@@ -111,7 +122,7 @@ export async function mountDrift(container, params, ctx) {
         labels.append(svg("text", {
           x: tx + 18, y: ty - 8, "font-family": "Spline Sans Mono, monospace",
           "font-size": 9.5, fill: "var(--drop)",
-        }, `${ref.symbol} — not in graph`));
+        }, `${ref.symbol} \u2014 not in your code`));
         labels.append(svg("text", {
           x: tx + 18, y: ty + 6, "font-family": "Spline Sans Mono, monospace",
           "font-size": 8.5, fill: "var(--faint)",
@@ -141,10 +152,11 @@ export async function mountDrift(container, params, ctx) {
       : null,
     el("span", {}, staleNum, " stale"),
     unanchored
-      ? el("span", { title: "No prefix of these resolves in the graph, so they "
-                          + "are prose about something else — a database column, "
-                          + "an instance type, another tool's config. Reporting "
-                          + "them as drift would be a guess." },
+      ? el("span", { title: "Names that don\u2019t match anything in your code at all "
+                          + "\u2014 a database column, an instance type, another "
+                          + "tool\u2019s setting. Gusset can\u2019t tell whether "
+                          + "those are out of date, so it counts them instead of "
+                          + "calling them stale." },
           el("span", { style: { color: "var(--faint)" } }, String(unanchored)),
           " not about this code")
       : null,
@@ -152,11 +164,7 @@ export async function mountDrift(container, params, ctx) {
 
   const stage = el("div", { class: "drift-stage dotbg" }, svgEl,
     el("div", { class: "overlay-chips" }, pill,
-      explainer(
-        "Every backticked doc reference, checked against the graph — stale means no symbol resolves to it.",
-        "Allowlist external names (stdlib, GitHub concepts) so they stop reporting; that's a judgment call, so it's a button, not a default.",
-        "Exit code 2 on stale makes this a CI check.",
-      )));
+      driftHelp()));
 
   // -- right panel: stale reference cards ------------------------------------
   const cards = el("div", { class: "drift-cards" });
@@ -242,7 +250,7 @@ export async function mountDrift(container, params, ctx) {
   }
 
   const right = el("div", { class: "drift-right" },
-    el("div", { class: "drift-right-head" }, el("div", { class: "k" }, "STALE REFERENCES")),
+    el("div", { class: "drift-right-head" }, el("div", { class: "k" }, "DOCS POINTING AT MISSING CODE")),
     cards);
 
   container.append(el("div", { class: "view3" }, stage, right));

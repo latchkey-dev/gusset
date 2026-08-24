@@ -2,6 +2,15 @@
 
 import { el, svg, getJSON, codeBox, emptyState, explainer, fmtScore } from "../util.js";
 
+function impactHelp() {
+  return explainer(
+        "If you changed the thing in the middle, this is what else could break.",
+        "Each ring is one step further away. Ring 1 uses it directly, ring 2 uses something in ring 1, and so on.",
+        "Green means Gusset found the connection in your actual code. Red means the model suggested it, the code didn\u2019t back it up, and it was thrown away \u2014 those are shown rather than hidden so you can see what was rejected.",
+        "This is the same list that gets posted as the pull-request comment.",
+      );
+}
+
 const VB_W = 860, VB_H = 690;
 const CX = VB_W / 2, CY = 330;
 const CROWDED_RING = 10; // above this many nodes a ring goes hover-only
@@ -30,9 +39,10 @@ export async function mountImpact(container, params, ctx) {
     const wrap = emptyState(
       seed ? "Run impact from your terminal" : "No impact runs yet",
       seed
-        ? "serve is read-only for LLM runs — run this from your terminal and this view follows it live, claim by claim."
-        : "Run an impact analysis and this view replays it — every ring, every claim, every drop.",
+        ? "This page can\u2019t start a run itself \u2014 anything that calls a model happens in your terminal, so you stay in control of what gets spent. Run this and the page follows along live."
+        : "Ask what a change would affect, and this page replays the answer \u2014 what was checked, what was confirmed, and what was rejected.",
       cmd,
+      impactHelp(),
     );
     container.append(wrap);
     ctx.setHeader("impact · no runs yet");
@@ -320,14 +330,26 @@ export async function mountImpact(container, params, ctx) {
     svgEl,
     el("div", { class: "overlay-chips" },
       el("span", { class: "chip dim" }, "RUN"), picker,
-      explainer(
-        "A replay of one impact run — the seed's blast radius, ring by ring.",
-        "Green passed the verification gate: the edge exists in the graph. Red was claimed but dropped.",
-        "The same data becomes the PR comment.",
-      )),
+      impactHelp()),
     replayBar);
 
   // -- right panel -----------------------------------------------------------
+  // The metric names are the product's vocabulary and appear in CI output
+  // and the docs, so they stay — but nobody should have to look them up to
+  // read this panel.
+  const SCORE_HELP = {
+    closure_recall:
+      "Of everything your code says could be affected, how much did this run "
+      + "actually find? 1.00 means it missed nothing.",
+    gate_drop_rate:
+      "How much of what the model claimed got thrown out for not matching "
+      + "your code. 0.00 means nothing had to be rejected.",
+    summary_grounding:
+      "Of the things named in the written summary, how many really exist in "
+      + "your code. 1.00 means it invented nothing.",
+    module_coverage:
+      "How much of the codebase the write-up actually covers.",
+  };
   const scoreRows = [];
   const scores = model.scores || {};
   for (const [name, value] of Object.entries(scores)) {
@@ -336,7 +358,7 @@ export async function mountImpact(container, params, ctx) {
     const barColor = isDropRate ? "var(--drop)" : (good ? "var(--pass)" : "var(--rust)");
     const valColor = isDropRate ? "var(--muted)" : barColor;
     scoreRows.push(el("div", { class: "score-row" },
-      el("span", { class: "name", title: name }, name),
+      el("span", { class: "name", title: SCORE_HELP[name] || name }, name),
       el("div", { class: "bar" }, el("div", { style: { width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, background: barColor } })),
       el("span", { class: "val", style: { color: valColor } }, fmtScore(value)),
     ));
@@ -371,7 +393,7 @@ export async function mountImpact(container, params, ctx) {
 
   const right = el("div", { class: "side right", style: { width: "360px", overflow: "hidden" } },
     el("div", { style: { display: "flex", flexDirection: "column", gap: "4px" } },
-      el("div", { class: "k" }, "SEEDS"),
+      el("div", { class: "k" }, "IF YOU CHANGE"),
       seeds.length
         ? seeds.map((q) => el("span", { style: { fontFamily: "var(--mono)", fontSize: "12px", color: "var(--rust)", wordBreak: "break-all" } }, q))
         : el("span", { style: { fontFamily: "var(--mono)", fontSize: "12px", color: "var(--faint)" } }, "—"),
@@ -379,15 +401,16 @@ export async function mountImpact(container, params, ctx) {
         `graph @ ${ctx.commit || "?"}`),
       seedBits),
     el("div", { class: "stat3" },
-      el("div", { class: "verified" }, el("div", { class: "n" }, String(verified.length)), el("div", { class: "l" }, "VERIFIED")),
-      el("div", { class: "dropped" }, el("div", { class: "n" }, String(dropped.length)), el("div", { class: "l" }, "DROPPED")),
-      el("div", { class: "rings" }, el("div", { class: "n" }, String(model.rings || 0)), el("div", { class: "l" }, "RINGS"))),
+      el("div", { class: "verified" }, el("div", { class: "n" }, String(verified.length)), el("div", { class: "l" }, "CONFIRMED")),
+      el("div", { class: "dropped" }, el("div", { class: "n" }, String(dropped.length)), el("div", { class: "l" }, "REJECTED")),
+      el("div", { class: "rings" }, el("div", { class: "n" }, String(model.rings || 0)), el("div", { class: "l" }, "STEPS OUT"))),
     el("div", { style: { display: "flex", flexDirection: "column", gap: "7px" } },
-      el("div", { class: "k" }, "ORACLE SCORES"), scoreRows),
+      el("div", { class: "k", title: "Computed from your code, not judged by a model." }, "HOW WELL IT DID"), scoreRows),
     el("div", { style: { flex: "1", display: "flex", flexDirection: "column", gap: "6px", minHeight: "0" } },
-      el("div", { class: "k" }, "CLAIM LEDGER"),
+      el("div", { class: "k" }, "WHAT COULD BREAK"),
       ledger,
-      el("div", { class: "footnote" }, "Every row carries its edge; drops are logged, never hidden.")),
+      el("div", { class: "footnote" },
+        "Each row names the connection it was proved by. Rejected claims stay on the list rather than disappearing.")),
   );
 
   container.append(el("div", { class: "view3" }, stage, right));

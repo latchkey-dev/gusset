@@ -292,7 +292,12 @@ select.chip { appearance: none; -webkit-appearance: none; cursor: pointer; max-w
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  width: 340px;
+  /* Wider and scrollable: the copy explains the view in plain language,
+     which takes more words than the jargon it replaced. */
+  width: 400px;
+  max-height: min(70vh, 620px);
+  overflow-y: auto;
+  z-index: 40;
   background: var(--panel);
   border: 1.5px solid var(--ink);
   border-radius: 3px;
@@ -849,3 +854,8 @@ input[type="range"].scrub::-moz-range-thumb {
 .setup-foot .env-note { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
 .setup-foot .actions { margin-left: auto; display: flex; gap: 8px; }
 .setup-foot .btn { width: auto; padding: 9px 16px; }
+
+/* "what is this?" inside an empty state — an empty screen is when the
+   explanation matters most. */
+.empty-help { margin-top: 14px; display: flex; }
+.empty .explainer-panel { left: 0; width: 360px; }

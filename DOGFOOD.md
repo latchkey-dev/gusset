@@ -83,6 +83,30 @@ scale itself broke two things a small repo could not.
   UI produced a *less* honest product than before the distinction
   existed.
 
+- **BUG→FIXED (Daniel's find) — the UI explained itself in its own
+  vocabulary.** The "what is this?" panels were written for someone who
+  already knew the system: *"stale means no symbol resolves to it"*,
+  *"each box is a LangGraph node"*, *"the seed's blast radius, ring by
+  ring"*, *"autonomy earned per invariant"*. Daniel's verdict after
+  reading them on a real repo: more confusing than no text at all.
+
+  Rewritten to a fixed shape — what you are looking at, what the colours
+  mean, what to do — with the internal words removed: *"If you changed
+  the thing in the middle, this is what else could break"*, *"Your docs
+  name bits of code. This checks whether that code still exists."* The
+  panel labels went with them (`SEEDS` → `IF YOU CHANGE`, `CLAIM LEDGER`
+  → `WHAT COULD BREAK`, `TURN FEED` → `WHAT HAPPENED`), and the oracle
+  score names kept their real names — they appear in CI output and the
+  docs — but gained plain-English hovers.
+
+  Two things the rewrite exposed. The panel is a floating overlay that
+  covered the content it described and could only be closed by the button
+  that opened it; it now dismisses on outside-click and Escape. And the
+  explainer was attached only to *populated* views — so the ladder on a
+  repo without `gusset.toml` showed an empty screen with no way to ask
+  why, which is precisely the question it got asked. Empty states carry
+  it now, and the ladder's says plainly that nothing is broken.
+
 - **CONFIRMED STILL OPEN — the workflow view speaks impact for every
   workflow.** A docs-drift run renders `expand_ring ✓ 0 turns` and
   `verify_gate 0 verified` because the node graph is impact-shaped. Known

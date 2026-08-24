@@ -4,15 +4,24 @@
 
 import { el, svg, getJSON, emptyState, explainer, fmtClock, fmtScore } from "../util.js";
 
+function workflowHelp() {
+  return explainer(
+        "The steps one run went through, top to bottom, and what happened at each.",
+        "The chips along the bottom are hard limits: how far it will look, how many things it will weigh at once, which model it falls back to if the first is unavailable. These are fixed in code, so a run cannot talk itself past them.",
+        "The list on the right is what each step actually did, in order.",
+      );
+}
+
 export async function mountWorkflow(container, params, ctx) {
   let runs = [];
   try { runs = await getJSON("/api/runs"); } catch { runs = []; }
 
   if (runs.length === 0) {
     container.append(emptyState(
-      "No runs yet",
-      "Start a workflow and this view shows it live — node by node, turn by turn.",
+      "Nothing has run yet",
+      "Start any Gusset command and this page follows it live, step by step.",
       "gusset impact --symbol <your.symbol>",
+      workflowHelp(),
     ));
     ctx.setHeader("workflow · no runs yet");
     return;
@@ -40,20 +49,17 @@ export async function mountWorkflow(container, params, ctx) {
   const stage = el("div", { class: "wf-stage dotbg" },
     el("div", { class: "overlay-chips" },
       el("span", { class: "chip dim" }, "RUN"), picker,
-      explainer(
-        "The execution graph of a run, as it happened. Each box is a LangGraph node; the guards are code, not model choice.",
-        "The feed is the run's turn-by-turn event log.",
-      )),
+      workflowHelp()),
     dagHost);
 
   const feed = el("div", { class: "wf-feed" });
   const right = el("div", { class: "wf-right" },
     el("div", { class: "wf-feed-head" },
-      el("div", { class: "k" }, "TURN FEED"),
+      el("div", { class: "k" }, "WHAT HAPPENED"),
       el("div", { class: "wf-session" }, `session ${runId}`)),
     feed,
     el("div", { class: "wf-guards" },
-      el("div", { class: "k" }, "GUARDS ACTIVE"),
+      el("div", { class: "k", title: "Fixed in code — a run cannot exceed these." }, "LIMITS IN FORCE"),
       el("div", { class: "guard-chips" },
         el("span", {}, "depth ≤ 4"), el("span", {}, "fan-out ≤ 40"),
         el("span", {}, "fallback: sonnet-5"), el("span", {}, "8 retries")),

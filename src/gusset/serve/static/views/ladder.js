@@ -2,6 +2,16 @@
 
 import { el, getJSON, emptyState, explainer, fmtScore, fmtStamp } from "../util.js";
 
+function ladderHelp() {
+  return explainer(
+      "How much Gusset is allowed to do on its own \u2014 one card per job.",
+      "Every job starts out only able to write a report. It earns the right to comment on a pull request, then to open one, by getting things right repeatedly. Each small bar is one run; filled means that run scored clean.",
+      `It takes ${PROMOTE_RUNS} clean runs in a row to move up, and 3 bad runs out of the last 5 to drop back down. Nobody has to approve either \u2014 the score history decides.`,
+      "The top level, changing files directly, is never earned this way. Only you can grant it, by editing gusset.toml by hand.",
+      "Every promotion, demotion and run is recorded with its reason, and the record is committed to your repo \u2014 so the history is auditable rather than something you take on trust.",
+    );
+}
+
 const LEVELS = ["report", "comment", "propose", "act"];
 const PROMOTE_RUNS = 15;
 const PROMOTE_THRESHOLD = 0.9;
@@ -17,15 +27,16 @@ export async function mountLadder(container, params, ctx) {
 
   if (invariants.length === 0 && ledger.length === 0) {
     container.append(emptyState(
-      "No ladder yet",
-      "Define invariants in gusset.toml — the ladder raises their autonomy only on sustained scores, and lowers it on regression.",
+      "Gusset isn\u2019t set up on this repo yet",
+      "Nothing here is broken. This page shows how much each of Gusset\u2019s jobs is trusted to do on its own, and that only exists once you install it on a repo. Run this to create gusset.toml and the GitHub Action, and the jobs will appear here.",
       "gusset init",
+      ladderHelp(),
     ));
-    ctx.setHeader("ladder · no invariants yet");
+    ctx.setHeader("ladder · no jobs set up yet");
     return;
   }
 
-  ctx.setHeader("ladder · autonomy earned per invariant");
+  ctx.setHeader("ladder · what each job may do on its own");
 
   // last level-change per invariant (ladder moves ±1, so prev = level ∓ 1)
   const lastLevelEvent = new Map();
@@ -45,7 +56,7 @@ export async function mountLadder(container, params, ctx) {
 
   const ledgerCard = el("div", { class: "card ledger-card" },
     el("div", { class: "ledger-head" },
-      el("div", { class: "k" }, "LEDGER — EVERY DECISION, WITH ITS REASON"),
+      el("div", { class: "k" }, "HISTORY \u2014 EVERY DECISION AND WHY"),
       el("div", { class: "src" }, ".gusset/ladder.jsonl · committed to the repo")),
     body,
     el("div", { class: "ledger-rules" },
@@ -53,14 +64,12 @@ export async function mountLadder(container, params, ctx) {
       el("span", {}, "·"),
       el("span", {}, `Demotion: 3 of 5 below ${DEMOTE_THRESHOLD}`),
       el("span", {}, "·"),
-      el("span", {}, el("b", {}, "ACT is never ladder-granted — humans only, in gusset.toml"))));
+      el("span", {}, "\u00b7"),
+      el("span", {}, el("b", {},
+        "Changing files directly is never earned \u2014 only you can grant it, in gusset.toml"))));
 
   const explainRow = el("div", { class: "explainer-row" },
-    explainer(
-      "Autonomy is earned: each card is one invariant's score history and its current level.",
-      `Promotions need ${PROMOTE_RUNS} clean runs; demotions take 3 bad in 5.`,
-      "ACT is only ever granted by a human, in gusset.toml — the ladder never reaches it on its own.",
-    ));
+    ladderHelp());
 
   container.append(el("div", { class: "ladder-wrap dotbg" }, explainRow, grid, ledgerCard));
 }

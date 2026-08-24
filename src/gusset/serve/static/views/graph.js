@@ -3,6 +3,14 @@
 import { el, getJSON, emptyState, explainer, fmtInt, tokens } from "../util.js";
 import { createSim } from "../sim.js";
 
+function graphHelp() {
+  return explainer(
+        "Every function, class and file in your repo. A line between two of them means one uses the other.",
+        "Gusset only draws a line when it can point at the code that proves it. When it can\u2019t tell \u2014 something called through a variable, say \u2014 it leaves the line out and counts it instead. A missing line is safer than a wrong one, and the count at the bottom left is how many it skipped.",
+        "Click any circle to see what uses it and what it uses.",
+      );
+}
+
 const GROUPS = [
   { key: "functions", label: "functions", kinds: ["function"] },
   { key: "classes", label: "classes & methods", kinds: ["class", "method"] },
@@ -28,9 +36,10 @@ export async function mountGraph(container, params, ctx) {
   } catch {
     ctx.refresh = () => ctx.remount(); // an index signal can fill this in live
     container.append(emptyState(
-      "No graph yet",
-      "Index the repo to build the symbol graph this view explores.",
+      "Nothing indexed yet",
+      "Gusset needs to read your code once before it can show you anything. This takes a few seconds.",
       "gusset index --repo .",
+      graphHelp(),
     ));
     return;
   }
@@ -39,9 +48,10 @@ export async function mountGraph(container, params, ctx) {
   if (nodes.length === 0) {
     ctx.refresh = () => ctx.remount(); // an index signal can fill this in live
     container.append(emptyState(
-      "No graph yet",
-      "Index the repo to build the symbol graph this view explores.",
+      "Nothing indexed yet",
+      "Gusset needs to read your code once before it can show you anything. This takes a few seconds.",
       "gusset index --repo .",
+      graphHelp(),
     ));
     return;
   }
@@ -209,7 +219,8 @@ export async function mountGraph(container, params, ctx) {
     el("div", { class: "side-foot" },
       shownFoot,
       el("br"),
-      `${fmtInt(unresolved)} unresolved (counted,`, el("br"), "never guessed)"),
+      el("span", { title: "Uses Gusset could see but not prove \u2014 a call through a variable, dynamic dispatch. It counts them rather than drawing a line it cannot back up." },
+        `${fmtInt(unresolved)} uses it couldn\u2019t`, el("br"), "verify (not guessed)")),
   );
 
   // -- stage -----------------------------------------------------------------
@@ -230,11 +241,7 @@ export async function mountGraph(container, params, ctx) {
     canvas,
     el("div", { class: "overlay-chips" },
       fitChip, zoomChip, capChip,
-      explainer(
-        "Your repo as Gusset sees it: every symbol, and only the edges it could prove — packages ring the code.",
-        "This graph is the ground truth every other view checks against.",
-        "Click a node to explore its dependents, then run impact from it.",
-      )));
+      graphHelp()));
 
   // -- right panel -----------------------------------------------------------
   const selQual = el("div", { class: "sel-qual" });
