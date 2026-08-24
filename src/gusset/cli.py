@@ -90,7 +90,7 @@ def impact(
     from langgraph.types import Command
 
     from gusset.llm import make_model
-    from gusset.probe import make_callbacks, trace_url_hint
+    from gusset.probe import make_callbacks, retry_digest_note, trace_url_hint
     from gusset.workflows.impact import build_impact_graph
     from gusset.workflows.seeds import seeds_from_diff
 
@@ -162,6 +162,8 @@ def impact(
     runlog.finish(
         session_id, {s.name: s.value for s in _sir(state, db)}, "approved"
     )
+    if (note := retry_digest_note()) is not None:
+        typer.echo(note)
     if (url := trace_url_hint(session_id)) is not None:
         typer.echo(f"trace: {url}")
 
@@ -188,7 +190,7 @@ def atlas(
 
     from gusset.llm import make_model
     from gusset.oracle import score_atlas_run
-    from gusset.probe import make_callbacks, trace_url_hint
+    from gusset.probe import make_callbacks, retry_digest_note, trace_url_hint
     from gusset.probe.scoring import push_scores
     from gusset.probe.selfheal import SelfHealing
     from gusset.workflows.atlas import build_atlas_graph
@@ -245,6 +247,8 @@ def atlas(
         runlog.finish(session_id, None, "rejected")
         typer.echo("Rejected — nothing written.", err=True)
         raise typer.Exit(1)
+    if (note := retry_digest_note()) is not None:
+        typer.echo(note)
     if (url := trace_url_hint(session_id)) is not None:
         typer.echo(f"trace: {url}")
 
@@ -271,7 +275,7 @@ def docs_drift(
     from langgraph.checkpoint.sqlite import SqliteSaver
     from langgraph.types import Command
 
-    from gusset.probe import make_callbacks, trace_url_hint
+    from gusset.probe import make_callbacks, retry_digest_note, trace_url_hint
     from gusset.workflows.docsdrift import build_docsdrift_graph
 
     db = _db_path(db)
@@ -353,6 +357,8 @@ def docs_drift(
         f"wrote {out} — {len(state.get('claims', []))} claims checked, "
         f"{len(stale)} stale"
     )
+    if (note := retry_digest_note()) is not None:
+        typer.echo(note)
     if (url := trace_url_hint(session_id)) is not None:
         typer.echo(f"trace: {url}")
     if stale:

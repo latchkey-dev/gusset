@@ -129,6 +129,16 @@ else's.
   is still caught, which is the assertion that keeps this a check rather
   than a mute button.
 
+- **BUG→FIXED — every run looked like it was erroring.** On a free
+  PandaProbe tier the SDK logged four to eight
+  `429, retrying in 0.5s` warnings per run. Tracing is optional and
+  scores are local, so nothing was actually wrong — but that is not what
+  a stranger's first run looks like. The SDK uses `logging`, so the
+  retries are now collapsed by a filter into one line naming the count
+  and stating that scores are unaffected. The ERROR when retries are
+  exhausted still prints: suppressing the chatter is a courtesy,
+  suppressing the outcome would be a lie about whether the trace exists.
+
 - **BUG (open, known class) — bare cross-file calls still use a
   unique-name fallback.** `resolve()` still resolves a bare `render()`
   to a unique repo-wide `render` even when the caller never imports it.
