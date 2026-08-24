@@ -2,8 +2,13 @@ dist/
 .env
 evals/.work/
 graph.db
-.gusset/
+.gusset/*
 .gusset/out/
+# ...except the one file users are told to curate. It must reach CI, or
+# the custodian re-flags everything the user allowlisted locally.
+# `.gusset/*` rather than `.gusset/`: git cannot re-include a path whose
+# parent DIRECTORY is excluded, only one whose contents are.
+!.gusset/drift-allowlist.txt
 harness/
 PLAN.md
 *.pyc

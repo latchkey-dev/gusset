@@ -94,19 +94,39 @@ def test_parse_go_mod(tmp_path):
     assert deps["github.com/pkg/errors"].resolved_version == "v0.9.1"
 
 
-def test_parse_manifests_one_level_deep_and_malformed(tmp_path):
+def test_parse_manifests_at_any_depth_and_malformed(tmp_path):
+    """Monorepos keep manifests two levels down — `apps/api/package.json`.
+
+    The scan used to stop at one level, which on a real pnpm workspace
+    meant every workspace manifest was invisible and its declared deps
+    (`express`, `zod`, `next`) resolved to nothing.
+    """
     sub = tmp_path / "service"
     sub.mkdir()
     (sub / "package.json").write_text('{"dependencies": {"express": "^4"}}')
     deep = sub / "nested"
     deep.mkdir()
     (deep / "package.json").write_text('{"dependencies": {"koa": "^2"}}')
+    vendored = tmp_path / "node_modules" / "left-pad"
+    vendored.mkdir(parents=True)
+    (vendored / "package.json").write_text('{"dependencies": {"never": "^1"}}')
     (tmp_path / "pyproject.toml").write_text("not [valid toml ((")
-    deps = {d.name for d in parse_manifests(tmp_path)}
-    assert "express" in deps       # one level deep is scanned
-    assert "koa" not in deps       # two levels deep is not
-    # Malformed manifest yields zero deps, never an exception or a guess.
-    assert deps == {"express"}
+
+    deps = {d.name for d in parse_manifests(tmp_path, {"node_modules"})}
+    assert deps == {"express", "koa"}
+    # Vendored manifests are still skipped; a malformed one yields zero
+    # deps rather than an exception or a guess.
+    assert "never" not in deps
+
+
+def test_shallower_manifests_come_first(tmp_path):
+    """The indexer keeps the first declaration per name, so root wins."""
+    (tmp_path / "package.json").write_text('{"dependencies": {"zod": "^3"}}')
+    sub = tmp_path / "apps" / "api"
+    sub.mkdir(parents=True)
+    (sub / "package.json").write_text('{"dependencies": {"zod": "^1"}}')
+    specs = [d.version_spec for d in parse_manifests(tmp_path) if d.name == "zod"]
+    assert specs == ["^3", "^1"]
 
 
 def test_parse_manifests_missing_root(tmp_path):

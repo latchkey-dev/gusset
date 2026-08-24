@@ -1,0 +1,9 @@
+# Symbols legitimately outside the graph (stdlib, external
+# APIs, concepts). docs-drift skips these. One per line.
+asyncio.to_thread
+
+# Deliberately non-existent symbols used as EXAMPLES in prose about the
+# drift checker itself. Documenting the checker trips the checker — the
+# allowlist is the designed answer, not a doc rewrite.
+store.GraphStore.gone
+store.GraphStore.completely_invented_method

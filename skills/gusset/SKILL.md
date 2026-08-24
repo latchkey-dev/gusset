@@ -28,7 +28,7 @@ scores tell you when NOT to trust a run (see Interpreting output).
 | "What does changing X break/affect?" | `gusset impact --symbol <qualname>` or `--diff <git-range>` |
 | "What does this PR touch?" (before you edit further) | `gusset impact --diff origin/main...HEAD` |
 | "Document the architecture" / onboarding docs | `gusset atlas` |
-| "Any dead code?" | `gusset deadcode` (no LLM, free) |
+| "Any dead code?" | `gusset deadcode` (no LLM, free; add `--unverified` for the can't-tell bucket) |
 | "Are the docs stale?" / CI doc check | `gusset docs-drift` (exit 2 = drift found) |
 | "Set Gusset up on this repo" | `gusset init .` (see references/setup.md) |
 | "Show me the graph / the runs" | `gusset serve` (opens localhost UI) |
@@ -70,6 +70,15 @@ summary_grounding=1.0`
 Reports embed evidence: every "X affects Y" line names its edge kind and
 depth. You can hand the verified-impacts list straight to your own editing
 plan as the set of call sites to update and test.
+
+What an absence means. The graph never guesses an edge, so "no result" is
+two different answers and you should not merge them when reporting to a
+user. `deadcode` splits them for you: `dead` is a finding, `--unverified`
+is an unknown. `docs-drift` does the same — a dotted path nothing in the
+graph corroborates is reported as "not about this codebase", not as
+stale. A large `unresolved_refs` count is the same honesty, not a defect:
+`x.f()` resolves only through an exact import alias, because the type of
+`x` is not knowable to a parser.
 
 ## Autonomous mode (the custodian)
 

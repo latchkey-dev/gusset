@@ -1,7 +1,7 @@
 """Package-manifest parsing: the external-dependency layer's input.
 
-Parses manifests at the repo root and one level deep (monorepos):
-pyproject.toml, package.json, go.mod. Lockfiles beside a manifest
+Parses manifests anywhere in the repo (monorepos keep them two or more
+levels down): pyproject.toml, package.json, go.mod. Lockfiles beside a manifest
 (uv.lock, package-lock.json) supply exact resolved versions when present.
 
 Same design rule as the rest of the graph: never guess. A malformed
@@ -16,6 +16,8 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+from gusset.graph.walk import walk_files
 
 # PEP 508 requirement: leading distribution name, then optional extras,
 # version spec, and ";" markers. Only the name and spec are kept.
@@ -200,17 +202,26 @@ _PARSERS = {
 def parse_manifests(
     root: str | Path, skip_dirs: frozenset[str] | set[str] = frozenset()
 ) -> list[PackageDep]:
-    """All deps declared by manifests at `root` and one level deep.
+    """All deps declared by manifests anywhere in the repo.
 
-    Missing files are fine — returns whatever exists. Root manifests come
-    first, then subdirectory manifests in sorted order (the indexer keeps
-    the first declaration of a name per ecosystem).
+    Depth used to stop at one level, which is exactly one level short of
+    where monorepos keep their manifests: a pnpm workspace declares its
+    dependencies in `apps/api/package.json` and `packages/shared/
+    package.json`. On the repo that exposed this, every one of the four
+    workspace manifests was invisible, so `express`, `zod`, `next` and
+    `@prisma/client` resolved to nothing despite being declared.
+
+    Missing files are fine — returns whatever exists. Shallower manifests
+    come first (root, then depth 1, ...), each depth in sorted order, so
+    the indexer's "first declaration of a name per ecosystem wins" rule
+    still prefers the root manifest's version.
     """
     root = Path(root)
     if not root.is_dir():
         return []
-    dirs = [root] + sorted(
-        d for d in root.iterdir() if d.is_dir() and d.name not in skip_dirs
+    dirs = sorted(
+        {p.parent for p in walk_files(root, set(skip_dirs)) if p.name in _PARSERS},
+        key=lambda d: (len(d.relative_to(root).parts), d.as_posix()),
     )
     out: list[PackageDep] = []
     for directory in dirs:

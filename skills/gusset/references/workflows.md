@@ -6,7 +6,13 @@ All commands: `--db` (default `.gusset/graph.db`). LLM commands read
 ## gusset index REPO
 Deterministic, no LLM. Rebuilds the graph. Output JSON: files, symbols,
 edges, packages, imports_external, unresolved_refs. Re-run after big
-changes; the graph records its commit.
+changes; the graph records its commit. Edge kinds: calls, imports,
+inherits, imports_external, exports (module -> its default export —
+framework entry points are referenced from outside the repo). JSX
+element usage is a reference; lowercase tags are DOM, not symbols.
+`unresolved_refs` counts references deliberately NOT guessed at: a
+qualified call like `x.f()` resolves only through an exact import alias,
+so a high count is honesty, not failure.
 
 ## gusset impact
 Seeds: `--symbol <qualname>` (repeatable) and/or `--diff <git-range>`
@@ -24,15 +30,24 @@ graph-computed. Modules = top-level directories. Scores:
 module_coverage, gate_drop_rate, summary_grounding.
 
 ## gusset deadcode
-Pure query. Conservative: excludes dunders, `main`, packages. Dynamic
-dispatch can make live code look dead — present results as candidates,
-not verdicts.
+Pure query. Conservative: excludes modules, packages, dunders, `main`,
+`constructor`. Two buckets, and the distinction matters when you report
+back to a user: `dead` means no edge AND no unresolved reference shares
+the name — safe to act on. `--unverified` adds symbols the graph can
+neither show a caller for nor rule one out (dynamic dispatch, calls
+through a local variable): output becomes
+`{"dead": [...], "unverified": [...]}`. Present `dead` as candidates,
+never `unverified` — those are unknowns, not findings.
 
 ## gusset docs-drift
 `--repo <dir>` scopes which docs are scanned; the allowlist always loads
 from the .gusset root. `--no-llm` = fully deterministic. Exit 2 = drift.
-Stale ≠ wrong: stdlib/API mentions belong in `.gusset/drift-allowlist.txt`
-(the serve UI has a one-click button for this).
+Drift requires an ANCHOR: some prefix of the dotted path must itself
+resolve, so `store.GraphStore.gone` is drift while `m6a.large` or
+`users.created_at` are reported as "not about this codebase" rather than
+stale. The report file is never re-read as input. Stale != wrong:
+genuine externals belong in `.gusset/drift-allowlist.txt` (the serve UI
+has a one-click button for this).
 
 ## gusset run-event
 CI entry point (the Action calls it). Triggers: pull_request | push |

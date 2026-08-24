@@ -139,6 +139,43 @@ else's.
   exhausted still prints: suppressing the chatter is a courtesy,
   suppressing the outcome would be a lie about whether the trace exists.
 
+- **BUG→FIXED — monorepo manifests were one level out of reach.**
+  `parse_manifests` scanned the root and one level down. A pnpm workspace
+  keeps its manifests at `apps/api/package.json` and
+  `packages/shared/package.json` — two levels — so on the foreign repo
+  **all four workspace manifests were invisible**, and `express` (×6),
+  `@prisma/client` (×4), `zod`, `next` and `ioredis` resolved to nothing
+  despite being declared right there. Now walks the whole repo (pruned),
+  shallowest first so the root manifest still wins a version collision.
+  **Packages 13 → 40, external import edges 3 → 25, unresolved 609 →
+  587**, and all 25 checked by hand against their specifier.
+
+  Caught only because the advisor asked why `imports_external` had not
+  moved all session. It had been sitting at 3 through every re-index, and
+  I had read past it each time — the number was on screen a dozen times
+  and never once questioned.
+
+- **BUG→FIXED — the one file we tell users to curate was gitignored.**
+  Adding entries to `.gusset/drift-allowlist.txt` revealed that
+  `.gitignore` excluded all of `.gusset/`. So the allowlist never reached
+  CI: a user curates it locally, the custodian's next run re-flags every
+  entry, and the serve UI's one-click "allowlist this" button writes to a
+  file that is never committed. The docs said "safe to edit" about a file
+  the repo was configured to throw away.
+
+  Fixed as `.gusset/*` plus `!.gusset/drift-allowlist.txt` — git cannot
+  re-include a path whose parent *directory* is excluded, only one whose
+  *contents* are, so the trailing-slash form silently defeats the
+  negation.
+
+- **WIN (and a joke at our expense) — the drift checker caught its own
+  documentation.** Writing up the anchor rule meant putting
+  `store.GraphStore.gone` in three files as an *example* of a missing
+  symbol. It is, in fact, a missing symbol, so docs-drift dutifully
+  reported three drifts and exited 2. The allowlist is the designed
+  answer and it worked, but the lesson generalizes: prose *about* a
+  checker is still input *to* that checker.
+
 - **BUG (open, known class) — bare cross-file calls still use a
   unique-name fallback.** `resolve()` still resolves a bare `render()`
   to a unique repo-wide `render` even when the caller never imports it.
