@@ -17,8 +17,8 @@ scale itself broke two things a small repo could not.
   `.spread(` — the last dot of the ellipsis. On this repo that reported
   **231 fabricated edges**; every one was the audit's own false positive,
   and the four that survived a corrected regex turned out to be *correct*
-  static calls (`ParkedRunnerStartService.isEnabled()` resolved through
-  its import). So: **zero fabricated edges here.**
+  static calls (`FeatureService.isEnabled()` resolved through its
+  import). So: **zero fabricated edges here.**
 
   Re-running the corrected audit against the pre-fix snapshot puts the
   earlier "430 of 1776 call edges (24%)" at **348 of 1776 (19.6%)**. The
@@ -39,15 +39,15 @@ scale itself broke two things a small repo could not.
   perfect on a 78-symbol repo and leaks on a 6,419-symbol one, because
   almost any common word is a symbol name somewhere. It anchored
   `start.dateTime` (a Google Calendar API field) on a *method* named
-  `start`, `poolConfig.maxCount` on a *function* named `poolConfig`, and
-  `state.setEnvCalls` on a method named `state`.
+  `start`, `retryConfig.maxAttempts` on a *function* named
+  `retryConfig`, and `state.capturedCalls` on a method named `state`.
 
   The missing constraint was a type one: **a function cannot own a dotted
   member.** Only a module or a class can. Requiring the anchor to resolve
   to a container took this repo from **22 stale to 6** — and the 6 that
-  remain (`githubAppService.createWebhook`,
-  `tenantContext.loadUserContext`, `organizations.self_heal_mode`) are
-  genuinely worth a human's eye, which is the whole point. Verified not
+  remain (`webhookService.createHook`, `sessionContext.loadUser`,
+  `accounts.retry_mode`) are genuinely worth a human's eye, which is the
+  whole point. Verified not
   to regress: planted drift anchored on both a class and a module is
   still caught, exit 2 intact.
 
@@ -253,7 +253,7 @@ else's.
 
   The deeper bug: every backticked dotted string was treated as a claim
   about our code. The eight "stale symbols" were `m6a.large` (an AWS
-  instance type) and things like `self_heal_attempts.run_id` (database
+  instance type) and things like `job_attempts.run_id` (database
   columns). Drift now requires an **anchor** — some proper prefix of the
   path must itself resolve. `store.GraphStore.gone` is drift because
   `store.GraphStore` exists and the method does not; `m6a.large` anchors

@@ -63,8 +63,8 @@ def _anchored(store: GraphStore, symbol: str) -> bool:
     prefix resolves" is too weak in a large repo, where almost any common
     word is a symbol name somewhere. On a 6.4k-symbol codebase it let
     `start.dateTime` — a Google Calendar API field — anchor on a *method*
-    named `start`, and `poolConfig.maxCount` on a *function* named
-    `poolConfig`. A function cannot own a dotted member, so its existence
+    named `start`, and `retryConfig.maxAttempts` on a *function* named
+    `retryConfig`. A function cannot own a dotted member, so its existence
     is not evidence that the path was ever ours. Only a module or a class
     can own one.
     """

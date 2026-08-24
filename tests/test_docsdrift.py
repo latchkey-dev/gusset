@@ -164,8 +164,8 @@ def test_unanchored_dotted_prose_is_not_drift(db, tmp_path):
     evidence that says nothing about code.
     """
     docs = {"RUNBOOK.md": (
-        "Runs on `m6a.large`; the job writes `self_heal_attempts.run_id` "
-        "and reads `heal_reports.verdict`.\n"
+        "Runs on `m6a.large`; the job writes `job_attempts.run_id` "
+        "and reads `job_reports.verdict`.\n"
     )}
     with SqliteSaver.from_conn_string(str(tmp_path / "ckpt.db")) as saver:
         graph = build_docsdrift_graph(None, checkpointer=saver)
@@ -206,8 +206,8 @@ def test_anchor_must_be_a_container_not_a_function(tmp_path):
     "Some prefix resolves" holds on a small repo and leaks badly on a large
     one, where almost any common word is a symbol name somewhere. On a
     6.4k-symbol codebase it anchored `start.dateTime` (a Google Calendar
-    API field) on a method named `start`, and `poolConfig.maxCount` on a
-    function named `poolConfig`. Only a module or class can own a dotted
+    API field) on a method named `start`, and `retryConfig.maxAttempts` on a
+    function named `retryConfig`. Only a module or class can own a dotted
     member.
     """
     src = tmp_path / "src"

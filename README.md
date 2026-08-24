@@ -90,7 +90,8 @@ Full walkthrough: [docs/tutorial.md](docs/tutorial.md).
 ## Why trust an agent's output?
 
 Because the interesting claims here are **checkable**. Gusset indexes your
-repo (tree-sitter → SQLite: symbols, calls, imports, inheritance) and uses
+repo (tree-sitter → SQLite: symbols, calls, imports, inheritance,
+exports) and uses
 that graph twice — once as the workflow's map, and once as an **oracle**
 that verifies every claim the model makes. The model authors *wording*;
 the graph owns *truth*. That property is tested with a deliberately lying
