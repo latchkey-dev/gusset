@@ -107,6 +107,25 @@ scale itself broke two things a small repo could not.
   why, which is precisely the question it got asked. Empty states carry
   it now, and the ladder's says plainly that nothing is broken.
 
+- **FINDING — GitHub strips `<video>` from a README, children and all.**
+  Adding the product demo, the obvious markup was a `<video>` tag with an
+  image fallback nested inside for anything that could not play it.
+  Rendering the README through GitHub's own markdown API before committing
+  showed the whole element gone — an empty `<p align="center">` where the
+  demo should be. The nested fallback went with it, so the "safe"
+  construction would have shipped a blank space.
+
+  Committed files can therefore never be an inline player. An animated GIF
+  can: GitHub keeps it and even marks it `data-animated-image`. So the
+  README hero is a GIF of the whole run, linked to the full-quality mp4.
+  A true player is possible only via a `user-attachments` URL, which comes
+  from dragging the file into the GitHub web UI — a human step, not an API
+  one.
+
+  Same family as the PR-image 404 earlier: assumptions about how GitHub
+  renders our output are cheap to test and expensive to guess. The
+  markdown API answers this in one call.
+
 - **CONFIRMED STILL OPEN — the workflow view speaks impact for every
   workflow.** A docs-drift run renders `expand_ring ✓ 0 turns` and
   `verify_gate 0 verified` because the node graph is impact-shaped. Known

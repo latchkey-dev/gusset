@@ -9,6 +9,18 @@
 
 <p align="center"><b>Autonomous self-healing repo upkeep.</b></p>
 
+<p align="center">
+  <a href="docs/assets/gusset-demo.mp4">
+    <img src="docs/assets/gusset-demo.gif" width="860"
+         alt="Gusset in motion: indexing a repo, a verified blast-radius comment on a pull request, doc-drift checking, and autonomy earned run by run">
+  </a>
+</p>
+
+<p align="center">
+  <a href="docs/assets/gusset-demo.mp4"><b>▶ Watch the full 80-second demo</b></a><br>
+  <sub>Index a repo · verified blast radius on a PR · doc drift · autonomy earned run by run</sub>
+</p>
+
 New here? Read [what Gusset is, plainly](docs/what-is-gusset.md) — the
 two-minute version. Using Claude Code or Cursor? Point it at the
 [gusset agent skill](skills/gusset/SKILL.md) and it will drive Gusset
