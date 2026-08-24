@@ -35,18 +35,31 @@ class Def:
 
 @dataclass
 class Ref:
-    """A reference from `scope` (in-file qualname, '' = module level) to `target_name`."""
+    """A reference from `scope` (in-file qualname, '' = module level) to `target_name`.
+
+    `receiver` records what the call was made ON, and is the difference between
+    a fact and a guess:
+      None      -> bare call `f()`; the name alone identifies the target
+      "self"    -> `self.f()` / `this.f()`; the enclosing class identifies it
+      "<name>"  -> `x.f()`; the type of `x` is UNKNOWN to a static parser, so
+                   the target must resolve through an import alias or not at all
+    """
 
     scope: str
     target_name: str   # bare name for calls/inherits; dotted module path for imports
     kind: str          # calls | imports | inherits
     line: int
+    receiver: str | None = None
 
 
 @dataclass
 class Extraction:
     defs: list[Def] = field(default_factory=list)
     refs: list[Ref] = field(default_factory=list)
+    # local binding -> dotted import target, e.g. {"lib": "pkg.lib"}.
+    # This is the ONLY evidence that makes `lib.f()` resolvable without type
+    # inference; anything not in here stays unresolved rather than guessed.
+    aliases: dict = field(default_factory=dict)
 
 
 def extract(source: bytes, language: str) -> Extraction:
@@ -68,20 +81,43 @@ def _text(node: Node, source: bytes) -> str:
     return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
-def _callee_name(node: Node, source: bytes) -> str | None:
-    """Rightmost name of a call target: `f(...)` -> f, `a.b.f(...)` -> f."""
+def _callee_parts(node: Node, source: bytes) -> tuple[str, str | None] | None:
+    """(name, receiver) for a call target.
+
+    `f(...)`     -> ("f", None)          bare call
+    `self.f(...)`-> ("f", "self")        enclosing class resolves it
+    `a.f(...)`   -> ("f", "a")           receiver named but of unknown type
+    `a.b.f(...)` -> ("f", "a.b")         ditto, dotted receiver kept verbatim
+    `g().f(...)` -> ("f", "?")           receiver is an expression: unknowable
+    """
     if node.type == "identifier":
-        return _text(node, source)
-    if node.type == "attribute":  # Python: a.b
-        attr = node.child_by_field_name("attribute")
-        return _text(attr, source) if attr is not None else None
-    if node.type == "member_expression":  # TS/JS: a.b
-        prop = node.child_by_field_name("property")
-        return _text(prop, source) if prop is not None else None
-    if node.type == "selector_expression":  # Go: a.b
-        fld = node.child_by_field_name("field")
-        return _text(fld, source) if fld is not None else None
-    return None
+        return _text(node, source), None
+    field = {"attribute": ("attribute", "object"),          # Python a.b
+             "member_expression": ("property", "object"),   # TS/JS a.b
+             "selector_expression": ("field", "operand")     # Go a.b
+             }.get(node.type)
+    if field is None:
+        return None
+    name_node = node.child_by_field_name(field[0])
+    if name_node is None:
+        return None
+    recv_node = node.child_by_field_name(field[1])
+    if recv_node is None:
+        receiver = "?"
+    elif recv_node.type in ("identifier", "attribute", "member_expression",
+                            "selector_expression", "self", "this"):
+        receiver = _text(recv_node, source)
+    else:
+        receiver = "?"          # call result, subscript, literal, ...
+    if receiver in ("self", "this"):
+        receiver = "self"
+    return _text(name_node, source), receiver
+
+
+def _callee_name(node: Node, source: bytes) -> str | None:
+    """Rightmost name of a call target (receiver discarded — inherits only)."""
+    parts = _callee_parts(node, source)
+    return parts[0] if parts else None
 
 
 def _walk_python(
@@ -121,10 +157,11 @@ def _walk_python(
     if node.type == "call":
         fn = node.child_by_field_name("function")
         if fn is not None:
-            callee = _callee_name(fn, source)
-            if callee is not None:
+            parts = _callee_parts(fn, source)
+            if parts is not None:
                 out.refs.append(
-                    Ref(scope_qual, callee, "calls", node.start_point[0] + 1)
+                    Ref(scope_qual, parts[0], "calls", node.start_point[0] + 1,
+                        receiver=parts[1])
                 )
         # Recurse for nested calls / lambdas in arguments.
         for child in node.named_children:
@@ -133,19 +170,42 @@ def _walk_python(
 
     if node.type == "import_statement":
         for child in node.named_children:
-            target = child.child_by_field_name("name") if child.type == "aliased_import" else child
+            if child.type == "aliased_import":
+                target = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
+                bound = _text(alias_node, source) if alias_node is not None else None
+            else:
+                target, bound = child, None
             if target is not None and target.type in ("dotted_name", "identifier"):
+                dotted = _text(target, source)
                 out.refs.append(
-                    Ref(scope_qual, _text(target, source), "imports", node.start_point[0] + 1)
+                    Ref(scope_qual, dotted, "imports", node.start_point[0] + 1)
                 )
+                # `import a.b.c` binds `a`, but `a.b.c.f()` is also valid: key
+                # the full dotted path so only an exact receiver match resolves.
+                out.aliases[bound or dotted] = dotted
         return
 
     if node.type == "import_from_statement":
         module = node.child_by_field_name("module_name")
         if module is not None:
+            mod = _text(module, source)
             out.refs.append(
-                Ref(scope_qual, _text(module, source), "imports", node.start_point[0] + 1)
+                Ref(scope_qual, mod, "imports", node.start_point[0] + 1)
             )
+            # `from pkg import lib` binds `lib` to `pkg.lib`.
+            for child in node.named_children:
+                if child is module:
+                    continue
+                if child.type == "aliased_import":
+                    name_node = child.child_by_field_name("name")
+                    alias_node = child.child_by_field_name("alias")
+                    if name_node is not None and alias_node is not None:
+                        out.aliases[_text(alias_node, source)] = (
+                            f"{mod}.{_text(name_node, source)}")
+                elif child.type in ("dotted_name", "identifier"):
+                    imported = _text(child, source)
+                    out.aliases[imported] = f"{mod}.{imported}"
         return
 
     for child in node.named_children:
@@ -242,10 +302,11 @@ def _walk_ts(
         # instantiation is a plain call node.
         fn = node.child_by_field_name("function") or node.child_by_field_name("constructor")
         if fn is not None:
-            callee = _callee_name(fn, source)
-            if callee is not None:
+            parts = _callee_parts(fn, source)
+            if parts is not None:
                 out.refs.append(
-                    Ref(scope_qual, callee, "calls", node.start_point[0] + 1)
+                    Ref(scope_qual, parts[0], "calls", node.start_point[0] + 1,
+                        receiver=parts[1])
                 )
         for child in node.named_children:
             _walk_ts(child, source, scope, in_class, out)
@@ -260,6 +321,28 @@ def _walk_ts(
             out.refs.append(
                 Ref(scope_qual, path, "imports", node.start_point[0] + 1)
             )
+            # Bind every local name the import introduces, so `Redis.f()` or
+            # `helpers.f()` can resolve exactly — and nothing else can.
+            for clause in node.named_children:
+                if clause.type != "import_clause":
+                    continue
+                for part in clause.named_children:
+                    if part.type == "identifier":                      # default
+                        out.aliases[_text(part, source)] = path
+                    elif part.type == "namespace_import":              # * as ns
+                        for c in part.named_children:
+                            if c.type == "identifier":
+                                out.aliases[_text(c, source)] = path
+                    elif part.type == "named_imports":                 # { a, b as c }
+                        for spec in part.named_children:
+                            if spec.type != "import_specifier":
+                                continue
+                            alias_node = spec.child_by_field_name("alias")
+                            name_node = spec.child_by_field_name("name")
+                            if name_node is None:
+                                continue
+                            bound = _text(alias_node or name_node, source)
+                            out.aliases[bound] = f"{path}::{_text(name_node, source)}"
         return
 
     for child in node.named_children:
@@ -345,10 +428,11 @@ def _walk_go(
     if node.type == "call_expression":
         fn = node.child_by_field_name("function")
         if fn is not None:
-            callee = _callee_name(fn, source)
-            if callee is not None:
+            parts = _callee_parts(fn, source)
+            if parts is not None:
                 out.refs.append(
-                    Ref(scope_qual, callee, "calls", node.start_point[0] + 1)
+                    Ref(scope_qual, parts[0], "calls", node.start_point[0] + 1,
+                        receiver=parts[1])
                 )
         for child in node.named_children:
             _walk_go(child, source, scope, in_class, out)

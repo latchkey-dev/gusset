@@ -2,7 +2,10 @@
 
 The fixture's ground truth:
   app.main       calls  util.helper, app.fmt (top-level arrow fn),
-                 instantiates shapes.Fancy, calls shapes.Fancy.describe
+                 instantiates shapes.Fancy; `f.describe()` is NOT an edge —
+                 the receiver is a local variable whose type only a type
+                 checker could know, and the graph never guesses (see
+                 test_qualified_calls_are_not_guessed)
   util.helper    calls  util.double
   shapes.Fancy   inherits shapes.Base
   util.unusedExport has no callers (dead)
@@ -25,7 +28,10 @@ def store(tmp_path_factory) -> GraphStore:
     counts = index_repo(FIXTURE, db)
     assert counts["files"] == 3
     # Every ref in the fixture resolves: relative imports, calls, inherits.
-    assert counts["unresolved_refs"] == 0
+    # Exactly one honest miss: `f.describe()` on a local variable. Resolving
+    # it would require type inference; guessing it is what fabricated edges
+    # like `router.get()` -> `CacheService.get` on real repos.
+    assert counts["unresolved_refs"] == 1
     s = GraphStore(db)
     yield s
     s.close()
@@ -47,7 +53,8 @@ def test_call_edges(store: GraphStore):
     assert store.edge_exists("app.main", "util.helper", "calls")
     assert store.edge_exists("app.main", "app.fmt", "calls")
     assert store.edge_exists("app.main", "shapes.Fancy", "calls")  # new Fancy()
-    assert store.edge_exists("app.main", "shapes.Fancy.describe", "calls")
+    # `f.describe()` deliberately produces NO edge — unknown receiver type.
+    assert not store.edge_exists("app.main", "shapes.Fancy.describe", "calls")
     assert store.edge_exists("util.helper", "util.double", "calls")
 
 

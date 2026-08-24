@@ -210,9 +210,46 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
         by_qualname[row[2]] = row[0]
         by_name.setdefault(row[1], []).append(row[0])
 
-    def resolve(module_qual: str, scope: str, name: str) -> int | None:
-        # Same-file first: innermost enclosing scope outward, then module level.
+    def resolve(module_qual: str, scope: str, name: str,
+                receiver: str | None = None,
+                import_aliases: dict[str, str] | None = None) -> int | None:
+        """Resolve a reference to a symbol id, or None — never a guess.
+
+        The receiver decides what evidence is available:
+
+        * bare call `f()` — the name alone is the whole reference, so the
+          same-file scope chain and then a UNIQUE repo-wide name are fair
+          evidence.
+        * `self.f()` — the enclosing class is known; resolve inside it only.
+        * `x.f()` — the type of `x` is unknowable to a static parser. The only
+          honest resolution is through an import alias in this file
+          (`import lib` + `lib.f()` -> that module's `f`). Otherwise the
+          reference stays UNRESOLVED. Guessing a unique global name here is
+          what produced fabricated edges: `router.get()` in express and
+          `store.get()` on a Map both resolved to an unrelated `CacheService.get`
+          (found by pointing Gusset at a foreign TypeScript repo).
+        """
         parts = scope.split(".") if scope else []
+
+        if receiver == "self":
+            # Innermost enclosing CLASS scope outward — never the whole repo.
+            for i in range(len(parts), 0, -1):
+                candidate = ".".join([module_qual, *parts[:i], name])
+                if candidate in by_qualname:
+                    return by_qualname[candidate]
+            return None
+
+        if receiver is not None:
+            if receiver == "?" or not import_aliases:
+                return None
+            # Exact receiver match only — no prefix guessing. `a.b.f()` must
+            # find the alias "a.b", not silently reuse the alias for "a".
+            target = import_aliases.get(receiver)
+            if target is None:
+                return None
+            return by_qualname.get(f"{target}.{name}")
+
+        # Bare call: same-file scopes first, then a unique repo-wide name.
         for i in range(len(parts), -1, -1):
             candidate = ".".join([module_qual, *parts[:i], name])
             if candidate in by_qualname:
@@ -224,6 +261,18 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
 
     # -- pass 2: edges -------------------------------------------------------
     for file_id, module_qual, rel_dir, language, ex in extractions:
+        # Import aliases in THIS file, from the extractor: the only evidence
+        # that makes a qualified call (`lib.f()`) resolvable without type
+        # inference. Relative module paths are normalized to qualnames here.
+        import_aliases: dict[str, str] = {}
+        for bound, target in (ex.aliases or {}).items():
+            module_part, _, member = target.partition("::")
+            if module_part.startswith("."):
+                module_part = posixpath.normpath(
+                    posixpath.join(rel_dir, module_part)
+                ).replace("/", ".")
+            import_aliases[bound] = (
+                f"{module_part}.{member}" if member else module_part)
         for ref in ex.refs:
             src_qual = f"{module_qual}.{ref.scope}" if ref.scope else module_qual
             src_id = by_qualname.get(src_qual)
@@ -238,7 +287,9 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
                 ).replace("/", ".")
                 dst_id = by_qualname.get(candidate)
             if dst_id is None:
-                dst_id = resolve(module_qual, ref.scope, ref.target_name)
+                dst_id = resolve(module_qual, ref.scope, ref.target_name,
+                                 receiver=getattr(ref, "receiver", None),
+                                 import_aliases=import_aliases)
             if dst_id is None and ref.kind == "imports":
                 # Internal miss: one exact shot at a declared dependency.
                 dst_id = _resolve_external(language, ref.target_name, packages)

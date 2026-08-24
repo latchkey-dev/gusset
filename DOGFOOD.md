@@ -4,6 +4,53 @@ Gusset develops Gusset. Every friction point, surprise, or win from using
 the tool on itself lands here — this file is the product backlog the tool
 earns by being used. Newest first.
 
+## 2026-08-24 (the foreign-repo gauntlet)
+
+First run of Gusset against a repo it was not developed on: a TypeScript
+pnpm monorepo (30 files, 78 symbols, 13 packages). Everything below was
+invisible on our own Python repo and obvious within an hour on someone
+else's.
+
+- **BUG→FIXED — CRITICAL: the graph fabricated edges.** The one invariant
+  the whole product rests on — *never guess an edge* — was violated by the
+  extractor. `_callee_name` threw away the receiver, so `router.get()`,
+  `store.get()`, `request(app).get()` and `os.environ.get()` all became
+  calls to a unique `CacheService.get` via a repo-wide unique-name
+  fallback. **11 of 59 call edges on the foreign repo were fiction.** Then
+  we measured our own repo: **430 of 1776 (24%)**. Every impact radius and
+  `closure_recall` score we ever published was computed on a partly
+  invented graph.
+
+  Fix: `Ref` now carries a receiver (`None` bare · `self`/`this` · a name ·
+  `?` unknown), and resolution is receiver-aware. `self.f()` searches
+  enclosing class scopes outward and never repo-wide; `x.f()` resolves
+  **only** through an exact import-alias match, never a prefix guess;
+  anything else is counted unresolved. Verified by re-auditing every call
+  edge against its own source line: foreign repo 11 → **0**, gusset 430 →
+  **0**. Pinned by `tests/test_no_fabrication.py` against the real
+  four-way `.get()` collision that produced it.
+
+  The honest cost, stated plainly: unresolved refs rose 605 → 617
+  (foreign) and edges fell 1776 → 1305 (ours). We did not lose
+  information — we stopped inventing it, and started counting the misses.
+
+- **Process lesson — a monoculture hides the bug that matters most.** This
+  survived every test we had because our tests were written against the
+  code we wrote, in one language, in one idiom. Three independent gauntlet
+  agents flagged it within minutes on unfamiliar code. Dogfooding on
+  yourself is necessary and *not sufficient*: it validates the paths you
+  already thought of.
+
+- **BUG (open, high) — the honesty fix exposed deadcode as too noisy.**
+  Fewer fabricated edges means more symbols with no *resolved* caller:
+  our dead list went 298 → 361, and it now includes
+  `GraphStore.dead_symbols` — the function that implements `gusset
+  deadcode` — because it is called as `store.dead_symbols()`. Unresolved
+  refs are currently *counted but not stored*, so the query cannot tell
+  "nothing references this" from "we couldn't see the reference." Fixing
+  next, by resolving receivers through local construction sites rather
+  than by suppressing the symptom.
+
 ## 2026-08-18 (heartbeat)
 
 - **FEATURE — live CLI→browser sync (SSE heartbeat).** `/api/events`

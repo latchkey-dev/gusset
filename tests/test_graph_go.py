@@ -1,7 +1,9 @@
 """Graph substrate tests against the known Go fixture repo (one package).
 
 The fixture's ground truth:
-  app.main               calls  greeter.Greeter.Greet, greeter.Greeter.Rename,
+  app.main               calls  fmt.Println (external), greeter.report;
+                         `g.Greet()` / `g.Rename()` are NOT edges — `g` is a
+                         local whose type only a type checker could know,
                                 app.report, fmt.Println (stdlib, unresolved)
   greeter.Greeter.Greet  calls  greeter.decorate
   greeter.Unused         has no callers (dead)
@@ -25,7 +27,9 @@ def store(tmp_path_factory) -> GraphStore:
     assert counts["files"] == 2
     # Exactly two stdlib refs stay unresolved: import "fmt" and fmt.Println.
     # Counted, never guessed into edges.
-    assert counts["unresolved_refs"] == 2
+    # 2 pre-existing (fmt.Println, the fmt import) + `g.Greet()` and
+    # `g.Rename()`: unknown receiver type, so no edge is invented.
+    assert counts["unresolved_refs"] == 4
     s = GraphStore(db)
     yield s
     s.close()
@@ -46,8 +50,11 @@ def test_symbols_extracted(store: GraphStore):
 
 
 def test_call_edges(store: GraphStore):
-    assert store.edge_exists("app.main", "greeter.Greeter.Greet", "calls")
-    assert store.edge_exists("app.main", "greeter.Greeter.Rename", "calls")
+    # No edge for `g.Greet()` / `g.Rename()`: the receiver is a local variable,
+    # and inventing the edge is what fabricated `router.get()` -> CacheService
+    # on a real repo. Recovering these honestly needs local type tracking.
+    assert not store.edge_exists("app.main", "greeter.Greeter.Greet", "calls")
+    assert not store.edge_exists("app.main", "greeter.Greeter.Rename", "calls")
     assert store.edge_exists("app.main", "app.report", "calls")
     assert store.edge_exists("greeter.Greeter.Greet", "greeter.decorate", "calls")
 
@@ -66,20 +73,22 @@ def test_reverse_closure_is_impact_ground_truth(store: GraphStore):
     quals = {store.conn.execute(
         "SELECT qualname FROM symbols WHERE id = ?", (sid,)
     ).fetchone()[0]: depth for sid, depth in closure.items()}
-    # Changing decorate impacts Greet (depth 1) which impacts main (depth 2).
+    # Changing decorate impacts Greet (depth 1). The chain stops there: the
+    # main -> Greet hop went through `g.Greet()`, an unknowable receiver.
     assert quals["greeter.decorate"] == 0
     assert quals["greeter.Greeter.Greet"] == 1
-    assert quals["app.main"] == 2
+    assert "app.main" not in quals
     assert "greeter.Unused" not in quals
-    assert "app.report" not in quals
 
 
 def test_dead_symbols(store: GraphStore):
     dead = {s.qualname for s in store.dead_symbols()}
     assert "greeter.Unused" in dead
     assert "greeter.decorate" not in dead
-    assert "greeter.Greeter.Greet" not in dead
     assert "app.report" not in dead
+    # Honest cost of never guessing: methods only ever called through a local
+    # variable now look dead. Documented in docs/reference/cli.md.
+    assert "greeter.Greeter.Greet" in dead
 
 
 def test_grouped_import_form():
