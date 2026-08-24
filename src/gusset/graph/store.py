@@ -191,7 +191,7 @@ class GraphStore:
     _UNREFERENCED = """
         WHERE s.kind NOT IN ('module', 'package')
           AND s.name NOT LIKE '\\_\\_%' ESCAPE '\\'
-          AND s.name != 'main'
+          AND s.name NOT IN ('main', 'constructor')
           AND s.id NOT IN (SELECT dst FROM edges)
     """
 
@@ -214,7 +214,9 @@ class GraphStore:
 
         Conservative exclusions as before: modules (files are entered
         externally), packages (an unimported dependency is not dead code),
-        dunder methods (called by the runtime), and `main` (entry points).
+        dunder methods and `constructor` (invoked by the language itself,
+        never by name — `constructor` is TypeScript's `__init__` and was
+        missing from this list), and `main` (entry points).
         """
         rows = self.conn.execute(
             _SYMBOL_SELECT + self._UNREFERENCED + """

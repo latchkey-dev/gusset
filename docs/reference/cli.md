@@ -5,9 +5,26 @@ database defaults to `.gusset/graph.db`.
 
 ## `gusset index REPO [--db PATH]`
 
-Parse a repository (Python, TypeScript/JS, Go) into the graph database.
-Replaces any prior index. Output: JSON counts including `unresolved_refs` —
-references that could not be resolved and were counted, never guessed.
+Parse a repository (Python, TypeScript/JS/JSX, Go) into the graph
+database. Replaces any prior index. Output: JSON counts including
+`unresolved_refs` — references that could not be resolved and were
+recorded as such, never guessed.
+
+Edge kinds: `calls`, `imports`, `inherits`, `imports_external`, and
+`exports` (a module to its default-exported symbol — a Next.js page or
+React component is referenced by the framework, not by the repo, and
+without that edge it reads as dead code). JSX element usage counts as a
+reference: `<ServiceCard />` uses `ServiceCard` exactly as
+`ServiceCard()` would. Lowercase tags are intrinsic DOM elements and are
+not symbols.
+
+Call resolution is receiver-aware and deliberately incomplete. A bare
+`f()` resolves through the enclosing scopes and then a unique repo-wide
+name; `self.f()` / `this.f()` resolves inside the enclosing class only;
+`x.f()` resolves **only** through an exact import alias, because the type
+of `x` is not knowable to a parser. Anything else is left unresolved
+rather than guessed — a wrong edge would poison every claim the oracle
+verifies.
 
 ## `gusset stats [--db PATH]`
 

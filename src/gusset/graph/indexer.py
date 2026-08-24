@@ -208,13 +208,18 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
     # exact external mapping below.
     by_qualname: dict[str, int] = {}
     by_name: dict[str, list[int]] = {}
-    for row in cur.execute("SELECT id, name, qualname FROM symbols WHERE kind != 'package'"):
+    kind_by_id: dict[int, str] = {}
+    for row in cur.execute(
+        "SELECT id, name, qualname, kind FROM symbols WHERE kind != 'package'"
+    ):
         by_qualname[row[2]] = row[0]
         by_name.setdefault(row[1], []).append(row[0])
+        kind_by_id[row[0]] = row[3]
 
     def resolve(module_qual: str, scope: str, name: str,
                 receiver: str | None = None,
-                import_aliases: dict[str, str] | None = None) -> int | None:
+                import_aliases: dict[str, str] | None = None,
+                ref_kind: str = "calls") -> int | None:
         """Resolve a reference to a symbol id, or None — never a guess.
 
         The receiver decides what evidence is available:
@@ -256,9 +261,17 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
             candidate = ".".join([module_qual, *parts[:i], name])
             if candidate in by_qualname:
                 return by_qualname[candidate]
-        if name in by_qualname:  # dotted module path (imports)
+        if ref_kind == "imports" and name in by_qualname:  # dotted module path
             return by_qualname[name]
         ids = by_name.get(name, [])
+        if ref_kind in ("calls", "inherits", "exports"):
+            # A module is not callable and cannot be a base class. Dropping
+            # module candidates here is a type constraint, not a preference
+            # between equals — and it is what makes the common React layout
+            # resolvable: ServiceCard.tsx defines a module named ServiceCard
+            # AND a component named ServiceCard, so every use of the
+            # component looked ambiguous and resolved to nothing.
+            ids = [i for i in ids if kind_by_id.get(i) != "module"]
         return ids[0] if len(ids) == 1 else None  # unique global match only
 
     # -- pass 2: edges -------------------------------------------------------
@@ -291,7 +304,8 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
             if dst_id is None:
                 dst_id = resolve(module_qual, ref.scope, ref.target_name,
                                  receiver=getattr(ref, "receiver", None),
-                                 import_aliases=import_aliases)
+                                 import_aliases=import_aliases,
+                                 ref_kind=ref.kind)
             if dst_id is None and ref.kind == "imports":
                 # Internal miss: one exact shot at a declared dependency.
                 dst_id = _resolve_external(language, ref.target_name, packages)

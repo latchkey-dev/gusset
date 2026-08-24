@@ -100,13 +100,36 @@ else's.
   was not — logged here because an audit that is never itself audited is
   just a second opinion with better formatting.
 
-- **BUG (open, high) — JSX element usage is not a reference.** The real
-  deadcode false positives on that repo are React components:
-  `ServiceCard`, `StatusBadge`, `IncidentTimeline`, and the page
-  components. `<ServiceCard ... />` is a use of the identifier and the
-  extractor does not see it, so a component used on every screen looks
-  unreferenced. Compounded by unresolved `@/components/...` tsconfig path
-  aliases, which cost the import edge too. Fixing next.
+- **BUG→FIXED — React code referenced things in three ways the graph
+  could not see.** The remaining deadcode false positives were all React,
+  and each had a distinct cause:
+
+  1. **JSX usage was not a reference.** `<ServiceCard />` uses
+     `ServiceCard` exactly as `ServiceCard()` would, and the extractor
+     walked straight past it, so components rendered on every screen were
+     unreferenced. Now extracted. `<div>` is not: JSX compiles lowercase
+     tags to strings and capitalized ones to identifiers, so
+     capitalization is the language's rule, not a heuristic of ours.
+  2. **The module/component name collision blocked resolution.**
+     `ServiceCard.tsx` produces a module named `ServiceCard` *and* a
+     component named `ServiceCard`, so the unique-name fallback saw two
+     candidates and gave up. Modules are now excluded as candidates for
+     `calls`/`inherits`/`exports` — a module is not callable, so this is a
+     type constraint, not a preference between equals.
+  3. **Default exports left entry points unreferenced.** `export default
+     function HomePage()` is called by the framework, not by the repo.
+     Recorded now as an `exports` edge, module → symbol. Deliberately
+     driven by the export statement in the source, never by a
+     framework's file-path convention — inferring "this is a Next.js
+     page" from a directory layout would be exactly the kind of guess
+     this codebase refuses.
+
+  Plus a parity bug the same repo surfaced: `constructor` was reported as
+  dead code. It is TypeScript's `__init__` — invoked by the language,
+  never by name — and Python's dunder exclusion had no TS equivalent.
+
+  **Result on that repo: 19 dead symbols → 9, and all 9 verified by hand
+  as genuinely uncalled.** Call edges 42 → 46, still zero fabricated.
 
 ## 2026-08-18 (heartbeat)
 

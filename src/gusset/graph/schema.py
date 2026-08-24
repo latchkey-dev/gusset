@@ -2,7 +2,8 @@
 
 Node kinds: module (one per file), class, function, method, package
 (external dependency declared in a manifest).
-Edge kinds: calls, imports, inherits, imports_external.
+Edge kinds: calls, imports, inherits, imports_external, exports
+(module -> its default-exported symbol: published past the graph's edge).
 Unresolved references are recorded in their own table, never silently
 invented — the oracle must be able to say "this edge exists" with a
 straight face, and downstream queries must be able to tell "unreferenced"
@@ -44,7 +45,8 @@ CREATE TABLE IF NOT EXISTS edges (
     id   INTEGER PRIMARY KEY,
     src  INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
     dst  INTEGER NOT NULL REFERENCES symbols(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL,              -- calls | imports | inherits | imports_external
+    kind TEXT NOT NULL,              -- calls | imports | inherits |
+                                     -- imports_external | exports
     line INTEGER NOT NULL,           -- 1-based, where the reference occurs
     UNIQUE (src, dst, kind, line)
 );

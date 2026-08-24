@@ -312,6 +312,58 @@ def _walk_ts(
             _walk_ts(child, source, scope, in_class, out)
         return
 
+    if node.type == "export_statement":
+        # `export default X` publishes X past the edge of the graph: a
+        # Next.js page, a React component, a CLI entry. Nothing inside the
+        # repo needs to reference it, so without this every page component
+        # reads as dead code. The edge is recorded because the export
+        # statement is literally in the source — not inferred from a
+        # framework's file-path convention, which would be a guess about a
+        # tool we cannot see.
+        if any(c.type == "default" for c in node.children):
+            decl = node.child_by_field_name("declaration")
+            value = node.child_by_field_name("value")
+            target = None
+            if decl is not None:
+                name_node = decl.child_by_field_name("name")
+                target = _text(name_node, source) if name_node is not None else None
+            elif value is not None and value.type == "identifier":
+                target = _text(value, source)
+            # `export default () => 1` names nothing: there is no symbol to
+            # attribute the export to, so nothing is recorded.
+            if target:
+                out.refs.append(
+                    Ref(scope_qual, target, "exports", node.start_point[0] + 1)
+                )
+        for child in node.named_children:
+            _walk_ts(child, source, scope, in_class, out)
+        return
+
+    if node.type in ("jsx_opening_element", "jsx_self_closing_element"):
+        # `<ServiceCard />` uses ServiceCard exactly as `ServiceCard()` would.
+        # Without this a component rendered on every screen has no incoming
+        # edge and reads as dead code — which is what a foreign React repo
+        # reported back to us.
+        #
+        # `<div>` is an intrinsic DOM element, not a symbol in the repo. The
+        # discriminator is capitalization of the head identifier, which is
+        # not our heuristic: it is the rule JSX itself compiles by, so
+        # relying on it is reading the language, not guessing.
+        # jsx_closing_element is deliberately left alone — the opening tag
+        # already recorded the use, and counting both would double every
+        # component that is not self-closing.
+        name_node = node.child_by_field_name("name")
+        if name_node is not None:
+            parts = _callee_parts(name_node, source)
+            if parts is not None and (parts[1] or parts[0])[:1].isupper():
+                out.refs.append(
+                    Ref(scope_qual, parts[0], "calls",
+                        node.start_point[0] + 1, receiver=parts[1])
+                )
+        for child in node.named_children:
+            _walk_ts(child, source, scope, in_class, out)
+        return
+
     if node.type == "import_statement":
         # Record the module path verbatim ("./util", "fs"); the indexer
         # resolves relative paths to in-repo modules when trivially possible.
