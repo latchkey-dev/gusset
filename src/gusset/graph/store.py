@@ -227,6 +227,15 @@ class GraphStore:
         WHERE s.kind NOT IN ('module', 'package')
           AND s.name NOT LIKE '\\_\\_%' ESCAPE '\\'
           AND s.name NOT IN ('main', 'constructor')
+          AND NOT (
+              -- Go test entry points: `go test` finds TestXxx/BenchmarkXxx/
+              -- ExampleXxx/FuzzXxx by reflection, never by a call in the
+              -- source. Same category as `main`, and a real repo reported
+              -- 37 of them as dead code.
+              f.path LIKE '%\\_test.go' ESCAPE '\\'
+              AND (s.name GLOB 'Test[A-Z_]*' OR s.name GLOB 'Benchmark[A-Z_]*'
+                   OR s.name GLOB 'Example[A-Z_]*' OR s.name GLOB 'Fuzz[A-Z_]*')
+          )
           AND s.id NOT IN (SELECT dst FROM edges)
     """
 

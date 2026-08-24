@@ -4,6 +4,64 @@ Gusset develops Gusset. Every friction point, surprise, or win from using
 the tool on itself lands here — this file is the product backlog the tool
 earns by being used. Newest first.
 
+## 2026-08-24 (second foreign repo: production scale)
+
+A 1,341-file production monorepo — TypeScript, Go, Terraform, four
+lambda fleets — indexed in **5.5s**: 6,419 symbols, 26,741 edges, 159
+packages. An order of magnitude past anything we had tried, and the
+scale itself broke two things a small repo could not.
+
+- **CORRECTION — my own fabrication audit was wrong, and the number I
+  published with it.** The audit script tested `f".{name}(" in line` to
+  spot a receiver-style call. In JavaScript, `...spread(x)` contains
+  `.spread(` — the last dot of the ellipsis. On this repo that reported
+  **231 fabricated edges**; every one was the audit's own false positive,
+  and the four that survived a corrected regex turned out to be *correct*
+  static calls (`ParkedRunnerStartService.isEnabled()` resolved through
+  its import). So: **zero fabricated edges here.**
+
+  Re-running the corrected audit against the pre-fix snapshot puts the
+  earlier "430 of 1776 call edges (24%)" at **348 of 1776 (19.6%)**. The
+  finding stands and is still enormous; the number I stated was inflated
+  by my own tooling. Logged rather than quietly edited, because a project
+  whose whole claim is "the graph is the oracle" does not get to be loose
+  about the measurement of its own graph. The audit now requires a real
+  receiver character (`[\w)\]]`) before the dot.
+
+- **BUG→FIXED — Go test functions reported as dead code.** `go test`
+  finds `TestXxx` / `BenchmarkXxx` / `ExampleXxx` / `FuzzXxx` by
+  reflection; nothing in the source calls them. Exactly the category
+  `main` is already excluded for, and the exclusion had no Go arm. **37
+  false positives** on this repo. Dead list 389 → 352.
+
+- **BUG→FIXED — the docs-drift anchor rule did not survive scale.**
+  Yesterday's rule — drift requires *some* prefix to resolve — is
+  perfect on a 78-symbol repo and leaks on a 6,419-symbol one, because
+  almost any common word is a symbol name somewhere. It anchored
+  `start.dateTime` (a Google Calendar API field) on a *method* named
+  `start`, `poolConfig.maxCount` on a *function* named `poolConfig`, and
+  `state.setEnvCalls` on a method named `state`.
+
+  The missing constraint was a type one: **a function cannot own a dotted
+  member.** Only a module or a class can. Requiring the anchor to resolve
+  to a container took this repo from **22 stale to 6** — and the 6 that
+  remain (`githubAppService.createWebhook`,
+  `tenantContext.loadUserContext`, `organizations.self_heal_mode`) are
+  genuinely worth a human's eye, which is the whole point. Verified not
+  to regress: planted drift anchored on both a class and a module is
+  still caught, exit 2 intact.
+
+  Worth naming the pattern — this is the second time a rule that read as
+  principled on a small repo turned out to be doing its work by
+  coincidence at that size.
+
+- **LIMITATION (open) — Go types look dead.** Of the 352 remaining, a
+  large share are Go structs and interfaces (`Reservation`,
+  `ReservationStore`, `reserveCacheRequest`) used as `var x T` or `T{}`.
+  Type *usage* is not extracted as a reference in any language, which is
+  the same family as TS interfaces being invisible. This is now the
+  largest known false-positive class in deadcode.
+
 ## 2026-08-24 (the foreign-repo gauntlet)
 
 First run of Gusset against a repo it was not developed on: a TypeScript
@@ -17,7 +75,9 @@ else's.
   `store.get()`, `request(app).get()` and `os.environ.get()` all became
   calls to a unique `CacheService.get` via a repo-wide unique-name
   fallback. **11 of 59 call edges on the foreign repo were fiction.** Then
-  we measured our own repo: **430 of 1776 (24%)**. Every impact radius and
+  we measured our own repo: **430 of 1776 (24%)** — later corrected to
+  **348 (19.6%)** when the audit script's own bug surfaced on the next
+  repo; see the production-scale entry above. Every impact radius and
   `closure_recall` score we ever published was computed on a partly
   invented graph.
 

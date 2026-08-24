@@ -198,3 +198,42 @@ def test_interior_abbreviation_resolves(store_for_self):
     hits = store_for_self.symbols_by_dotted_path("atlas.partition")
     assert any(s.qualname.endswith("build_atlas_graph.partition") for s in hits)
     assert store_for_self.symbols_by_dotted_path("atlas.never_existed") == []
+
+
+def test_anchor_must_be_a_container_not_a_function(tmp_path):
+    """A function named `start` is not evidence that `start.dateTime` is ours.
+
+    "Some prefix resolves" holds on a small repo and leaks badly on a large
+    one, where almost any common word is a symbol name somewhere. On a
+    6.4k-symbol codebase it anchored `start.dateTime` (a Google Calendar
+    API field) on a method named `start`, and `poolConfig.maxCount` on a
+    function named `poolConfig`. Only a module or class can own a dotted
+    member.
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "svc.py").write_text(
+        "def start():\n"
+        "    return 1\n"
+        "\n"
+        "class Box:\n"
+        "    def keep(self):\n"
+        "        return 2\n"
+    )
+    db = tmp_path / "anchor.db"
+    index_repo(src, db)
+
+    docs = {"d.md": (
+        "Calendar sends `start.dateTime`. The box exposes `Box.keep` "
+        "but no longer `Box.discarded`.\n"
+    )}
+    with SqliteSaver.from_conn_string(str(tmp_path / "ckpt.db")) as saver:
+        graph = build_docsdrift_graph(None, checkpointer=saver)
+        state, config = run_to_interrupt(graph, str(db), docs)
+        final = graph.invoke(Command(resume=True), config)
+
+    # Anchored on the class Box -> real drift, still reported.
+    assert [c["symbol"] for c in final["stale"]] == ["Box.discarded"]
+    # Anchored only on a function -> not our claim at all.
+    assert [c["symbol"] for c in final["unanchored"]] == ["start.dateTime"]
+    assert [c["symbol"] for c in final["valid"]] == ["Box.keep"]

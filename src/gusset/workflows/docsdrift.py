@@ -54,14 +54,24 @@ from gusset.workflows.impact import _content_text
 
 
 def _anchored(store: GraphStore, symbol: str) -> bool:
-    """Does any proper prefix of this dotted path resolve in the graph?
+    """Does a prefix of this path resolve to something that can OWN a member?
 
     Longest prefix first: the closer the anchor, the more likely the path
     really is a reference to our code that has since moved.
+
+    The container requirement is what makes this hold at scale. "Some
+    prefix resolves" is too weak in a large repo, where almost any common
+    word is a symbol name somewhere. On a 6.4k-symbol codebase it let
+    `start.dateTime` — a Google Calendar API field — anchor on a *method*
+    named `start`, and `poolConfig.maxCount` on a *function* named
+    `poolConfig`. A function cannot own a dotted member, so its existence
+    is not evidence that the path was ever ours. Only a module or a class
+    can own one.
     """
     parts = symbol.split(".")
     for cut in range(len(parts) - 1, 0, -1):
-        if store.symbols_by_dotted_path(".".join(parts[:cut])):
+        hits = store.symbols_by_dotted_path(".".join(parts[:cut]))
+        if any(h.kind in ("module", "class") for h in hits):
             return True
     return False
 

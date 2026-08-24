@@ -105,3 +105,24 @@ def test_grouped_import_form():
         ("fmt", "imports"),
         ("strings", "imports"),
     ]
+
+
+def test_go_test_entry_points_are_not_dead(tmp_path):
+    """`go test` invokes TestXxx/BenchmarkXxx by reflection, never by name.
+
+    Same category as `main`, and the exclusion was missing: a real Go
+    codebase reported 37 of its test functions as dead code.
+    """
+    db = tmp_path / "gotest.db"
+    index_repo(Path(__file__).parent / "fixtures" / "gotest", db)
+    store = GraphStore(db)
+    try:
+        dead = {s.qualname for s in store.dead_symbols()}
+        assert "calc_test.TestAdd" not in dead
+        assert "calc_test.BenchmarkAdd" not in dead
+        # Excluded, not unindexed — the symbols are still in the graph.
+        assert store.symbol_by_qualname("calc_test.TestAdd") is not None
+        # A genuinely unreferenced symbol is still reported.
+        assert "calc.Unused" in dead
+    finally:
+        store.close()
