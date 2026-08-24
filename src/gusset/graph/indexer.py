@@ -21,9 +21,13 @@ import posixpath
 import subprocess
 from pathlib import Path
 
+from gusset.graph import tsmodules
 from gusset.graph.extract import LANGUAGE_BY_SUFFIX, Extraction, extract
 from gusset.graph.manifest import norm_dist, parse_manifests
 from gusset.graph.schema import connect
+from gusset.graph.walk import walk_files
+
+_TS_LANGUAGES = {"typescript", "tsx", "javascript"}
 
 SKIP_DIRS = {
     ".git", ".hg", ".venv", "venv", "node_modules", "__pycache__",
@@ -169,10 +173,8 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
     unresolved = 0
 
     # -- pass 1: definitions ------------------------------------------------
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix not in LANGUAGE_BY_SUFFIX:
-            continue
-        if any(part in SKIP_DIRS for part in path.relative_to(root).parts):
+    for path in walk_files(root, SKIP_DIRS):
+        if path.suffix not in LANGUAGE_BY_SUFFIX or not path.is_file():
             continue
         language = LANGUAGE_BY_SUFFIX[path.suffix]
         source = path.read_bytes()
@@ -201,6 +203,7 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
 
     # -- pass 1b: package nodes from manifests --------------------------------
     packages = _insert_packages(cur, root)
+    ts_project = tsmodules.collect(root, SKIP_DIRS)
 
     # -- resolution maps ----------------------------------------------------
     # Packages are excluded: internal resolution (calls, unique-name imports)
@@ -293,14 +296,20 @@ def index_repo(root: str | Path, db_path: str | Path) -> dict[str, int]:
             src_id = by_qualname.get(src_qual)
             dst_id = None
             edge_kind = ref.kind
-            if ref.kind == "imports" and ref.target_name.startswith("."):
-                # Relative ES import ("./util"): resolve against the importing
-                # file's directory, but only on an exact module-qualname hit —
-                # anything fuzzier would be a guess, so it stays unresolved.
-                candidate = posixpath.normpath(
-                    posixpath.join(rel_dir, ref.target_name)
-                ).replace("/", ".")
-                dst_id = by_qualname.get(candidate)
+            if ref.kind == "imports" and language in _TS_LANGUAGES:
+                # TS/JS specifiers come in forms a filesystem walk cannot
+                # follow — "./util", "./routes/x.js", "@/lib/api",
+                # "@pulse/shared". Each is answered by a declaration in the
+                # repo (a tsconfig's paths, a package.json's name/main, or
+                # the compiler's .js-means-.ts rule), so this reads config
+                # rather than guessing, and only exact module-qualname hits
+                # count.
+                for candidate in tsmodules.candidates(
+                    ts_project, rel_dir, ref.target_name
+                ):
+                    dst_id = by_qualname.get(candidate)
+                    if dst_id is not None:
+                        break
             if dst_id is None:
                 dst_id = resolve(module_qual, ref.scope, ref.target_name,
                                  receiver=getattr(ref, "receiver", None),

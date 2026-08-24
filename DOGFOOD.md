@@ -61,6 +61,37 @@ else's.
   rare in idiomatic Python. The regression test is deliberately written
   in TypeScript for that reason.
 
+- **BUG→FIXED — TypeScript imports barely resolved at all.** 2 `imports`
+  edges for a monorepo whose every file starts with imports. Three forms
+  were unreadable, and not one of them was ambiguous — each is answered
+  by a file already in the repo:
+
+  | Form | Answered by |
+  |---|---|
+  | `./routes/incidents.js` | the compiler's rule that a `.js` specifier in TS source names the `.ts` that emits it |
+  | `@/lib/api` | that project's `tsconfig.json` `paths` (with `extends` merged) |
+  | `@pulse/shared` | the workspace `package.json`'s `name` and `types`/`main` |
+
+  New `graph/tsmodules.py` reads those declarations and proposes candidate
+  module qualnames; the indexer takes the first that exists and otherwise
+  resolves nothing. **Import edges on that repo: 2 → 18, and all 18 were
+  checked by hand against their source line and target file.** Total
+  edges 55 → 71, unresolved 625 → 609. An alias is scoped to the project
+  that declares it, so two packages binding `@/*` to different directories
+  cannot bleed into each other.
+
+  tsconfig is JSONC in practice, so the parser strips comments and
+  trailing commas with a string-aware scanner — a regex would have eaten
+  the `//` in `"https://…"`.
+
+- **BUG→FIXED — the indexer paid for `node_modules` on every run.** Both
+  walks used `rglob` and filtered afterwards, so a populated
+  `node_modules` was fully enumerated twice before being discarded. Now
+  pruned at the directory level: 8k skipped files went 0.31s → 0.056s,
+  and real installs are far larger than that. Found while adding the
+  second walk — writing the same slow thing twice is what made it
+  visible.
+
 - **BUG (open, known class) — bare cross-file calls still use a
   unique-name fallback.** `resolve()` still resolves a bare `render()`
   to a unique repo-wide `render` even when the caller never imports it.

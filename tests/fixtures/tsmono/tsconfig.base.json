@@ -1,0 +1,7 @@
+{
+  // A comment, because tsconfig is JSONC by convention.
+  "compilerOptions": {
+    "module": "NodeNext",
+    "strict": true
+  }
+}
