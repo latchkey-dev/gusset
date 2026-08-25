@@ -57,6 +57,9 @@ a snapshot pinned to a commit.
 `impact` prints: `scores: closure_recall=1.0 · gate_drop_rate=0.0 ·
 summary_grounding=1.0`
 
+- `closure_confidence < 0.9` — the graph could not see most of what points
+  at the seed, so a high `closure_recall` means little here. Say so when you
+  report the result; do not present the impact list as complete.
 - `closure_recall < 1.0` — the workflow missed reachable symbols; re-run
   or fall back to reading the graph directly (`gusset stats`, serve UI).
 - `gate_drop_rate > 0` — the model made claims the graph rejected; the

@@ -100,8 +100,10 @@ the graph owns *truth*. That property is tested with a deliberately lying
 model, and it powers everything else:
 
 - **Oracle scores on every run** — `closure_recall` (did it find everything
-  reachable?), `summary_grounding` (does every mentioned symbol exist?),
-  `gate_drop_rate`. Deterministic; no LLM judges, no human labels.
+  reachable?), `closure_confidence` (how much of what points at the seed
+  could the graph actually see?), `summary_grounding` (does every mentioned
+  symbol exist?), `gate_drop_rate`. Deterministic; no LLM judges, no human
+  labels.
 - **The autonomy ladder** — those scores decide what each invariant may do.
   15 clean runs to climb; 3 bad runs out of 5 to fall.
 - **Self-healing** — score trajectories feed [PandaProbe](https://docs.pandaprobe.com)'s

@@ -38,6 +38,7 @@ def score_impact_run(state: dict, db_path: str | Path, max_depth: int = 4) -> li
     try:
         return [
             _closure_recall(state, store, max_depth),
+            _closure_confidence(state, store, max_depth),
             _gate_drop_rate(state),
             _summary_grounding(state, store),
         ]
@@ -111,6 +112,64 @@ def _closure_recall(state: dict, store: GraphStore, max_depth: int) -> Score:
         "closure_recall", round(recall, 4),
         f"{len(found & expected)}/{len(expected)} of the reverse closure found"
         + (f"; missing e.g. {', '.join(missing)}" if missing else ""),
+    )
+
+
+def _closure_confidence(state: dict, store: GraphStore, max_depth: int) -> Score:
+    """How much of the seed's neighbourhood the graph could actually see.
+
+    `closure_recall` answers "of everything reachable, how much did the run
+    find?" — but *reachable* is computed from resolved edges only
+    (`reverse_closure` walks `FROM edges`). References the resolver refused
+    to guess at are not in the denominator, so they cannot lower the score.
+
+    A symbol with 200 callers of which 2 resolved therefore yields a closure
+    of 2, a run that finds 2, and `closure_recall` 1.0 — a perfect score on a
+    99% blind neighbourhood. Since the ladder promotes on these scores, a
+    graph that sees almost nothing earns autonomy exactly as fast as one that
+    sees everything.
+
+    This score closes that. For the seeds and everything in their closure, it
+    weighs the references we resolved against the references we recorded as
+    unresolvable but which name one of those same symbols:
+
+        resolved / (resolved + unseen)
+
+    Deliberately seed-adjacent rather than repo-wide. Whole-repo unresolved
+    density would punish ordinary Python, where stdlib calls and dynamic
+    dispatch are legitimately unresolvable and say nothing about whether
+    *this* answer is trustworthy.
+
+    Higher is better, so the ladder's existing `min()` across scores caps
+    promotion on a blind graph with no new machinery. Raised by a reader who
+    spotted the hole from the outside; see DOGFOOD.md.
+    """
+    seeds = state.get("seeds", [])
+    seed_ids = [s.id for q in seeds if (s := store.symbol_by_qualname(q))]
+    if not seed_ids:
+        return Score("closure_confidence", 1.0, "no seeds — nothing to judge")
+
+    closure = store.reverse_closure(seed_ids, max_depth=max_depth)
+    neighbourhood = [
+        sym for sid in closure if (sym := store.symbol_by_id(sid)) is not None
+    ]
+    if not neighbourhood:
+        return Score("closure_confidence", 1.0, "empty neighbourhood")
+
+    resolved = sum(len(store.dependents(sym.id)) for sym in neighbourhood)
+    unseen = sum(len(store.unresolved_refs(sym.name)) for sym in neighbourhood)
+    total = resolved + unseen
+    if total == 0:
+        # Nothing references these symbols and nothing failed to resolve
+        # against their names: genuinely isolated, and honestly so.
+        return Score("closure_confidence", 1.0,
+                     "no references at all to the seed neighbourhood")
+    confidence = resolved / total
+    return Score(
+        "closure_confidence", round(confidence, 4),
+        f"{resolved} resolved vs {unseen} unresolved reference(s) naming the "
+        f"seed neighbourhood — the graph saw {round(100 * confidence)}% of what "
+        f"points at it",
     )
 
 

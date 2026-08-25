@@ -4,6 +4,60 @@ Gusset develops Gusset. Every friction point, surprise, or win from using
 the tool on itself lands here — this file is the product backlog the tool
 earns by being used. Newest first.
 
+## 2026-08-24 (launch day: a reader found a hole in the eval)
+
+- **BUG→FIXED — a blind graph could earn autonomy as fast as a sighted
+  one.** Within hours of the launch post, [@latent_node](https://x.com/latent_node)
+  made the sharpest criticism this project has had:
+
+  > Refusing to invent edges is right. But `closure_recall` uses only the
+  > known reverse closure, and the ladder excludes `unresolved_refs`. A
+  > graph with high unresolved density can still score 1.0 and promote.
+  > Should ascent be capped by seed-adjacent unresolved risk?
+
+  Both halves check out. `reverse_closure` walks `FROM edges`, so
+  references the resolver refused to guess at are absent from
+  `closure_recall`'s denominator and cannot lower it. And the string
+  "unresolved" appeared nowhere in `oracle/` or `supervisor/`, so the
+  ladder never saw it either.
+
+  The consequence is worse than it first sounds. A symbol with 200 callers
+  of which 2 resolved produces a closure of 2, a run that finds both, and
+  `closure_recall` **1.0** — a perfect score on a 99% blind neighbourhood.
+  Fifteen of those promote an invariant exactly as fast as fifteen honest
+  ones. On this repo: `RunLog.append` has 2 resolved callers and 211
+  unresolved references to that name, and repo-wide it is 1,431 resolved
+  edges against 3,691 unresolved refs.
+
+  Worse, we had already shipped an instance of it. The pulse-prod
+  `createTestApp` run was reported here as a clean `closure_recall=1.0`.
+  It was also nearly uninformative, and no score could tell the two apart.
+
+  Fixed as `closure_confidence`: resolved references ÷ (resolved +
+  unresolved references naming the seed neighbourhood). It is a *score*
+  rather than a ladder rule on purpose, so the ladder's existing `min()`
+  across scores caps ascent with no new machinery. Measured: the blind
+  seed above scores **0.03**, a fully resolved one scores **1.0**, and a
+  run at 0.03 is held below the 0.9 promotion threshold.
+
+  The shape of the fix is @latent_node's, not ours. Their closing question
+  proposed capping ascent by **seed-adjacent unresolved risk**, and both
+  halves of that phrase did real work. *Seed-adjacent* is what made it
+  implementable: whole-repo unresolved density would punish ordinary
+  Python, where stdlib calls and dynamic dispatch are legitimately
+  unresolvable and say nothing about whether *this* answer is trustworthy.
+  *Capping ascent* is what pointed at the ladder rather than the report —
+  the reason this landed as a score feeding the existing `min()` instead
+  of a bespoke promotion rule.
+
+  The uncomfortable part is that the honesty invariant was enforced in the
+  graph and then not carried into the thing that grades the graph. We had
+  already made this exact mistake twice in one week: the third drift
+  bucket that never reached the UI, and the two-tier deadcode split that
+  the supervisor's PR comment did not mention. An honest measurement that
+  stops at the boundary of the module that computes it is not yet an
+  honest system.
+
 ## 2026-08-24 (second foreign repo: production scale)
 
 A 1,341-file production monorepo — TypeScript, Go, Terraform, four

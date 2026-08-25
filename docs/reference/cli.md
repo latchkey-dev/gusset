@@ -62,7 +62,7 @@ Verified blast radius. Seeds come from `--symbol` (exact qualnames) and/or
 no seeds or a rejected draft. `--yes` waives the interactive human gate.
 
 Requires `ANTHROPIC_API_KEY`. Prints oracle scores after the run:
-`closure_recall`, `gate_drop_rate`, `summary_grounding`.
+`closure_recall`, `closure_confidence`, `gate_drop_rate`, `summary_grounding`.
 
 ## `gusset atlas [--db PATH] [--out FILE] [--yes] [--model M]`
 
@@ -205,6 +205,7 @@ and per level change.
 | Score | Workflow | Definition |
 |---|---|---|
 | `closure_recall` | impact | verified impacts ÷ the graph's reverse closure of the seeds (depth-capped). 1.0 = nothing reachable was missed |
+| `closure_confidence` | impact | resolved references ÷ (resolved + unresolved references naming the seed neighbourhood). Answers a question `closure_recall` cannot: the closure is built from resolved edges only, so a symbol whose callers were mostly unresolvable yields a tiny closure, a run that finds all of it, and a recall of 1.0 on a neighbourhood the graph is blind to. Deliberately seed-adjacent — repo-wide unresolved density would penalise ordinary Python, where stdlib and dynamic dispatch are legitimately unresolvable |
 | `gate_drop_rate` | impact, atlas | claims dropped at the verification gate ÷ claims that reached it |
 | `summary_grounding` | impact, atlas | backticked dotted paths in the draft that resolve in the graph ÷ all mentioned. Abbreviated paths resolve at dot boundaries |
 | `module_coverage` | atlas | graph module clusters with a verified section ÷ all clusters |

@@ -36,7 +36,7 @@ That one property powers the whole system:
 
 - The **verification gate** in each workflow checks every claim against the
   graph. Unverifiable claims are dropped and logged — never silently kept.
-- The **oracle scores** (`closure_recall`, `summary_grounding`,
+- The **oracle scores** (`closure_recall`, `closure_confidence`, `summary_grounding`,
   `gate_drop_rate`) measure each run with no human labeling and no LLM
   judge in the loop.
 - The **autonomy ladder** promotes and demotes an invariant's permissions
